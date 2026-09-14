@@ -49,24 +49,29 @@ def ternary_bits(blocks, chans, option_a):
     return (convs * TERN + filters * FP32) + (stem + fc + 4 * bn_elems) * FP32
 
 
-R18 = ([2, 2, 2, 2], [64, 128, 256, 512], False)
-target = ternary_bits(*R18)
-print(f"ternary R18 params={n_params(*R18):,}  exported={target:,} bits = {target/MB:.4f} MB")
-print(f"fp32    R18 exported={fp32_bits(*R18)/MB:.4f} MB\n")
+def report():
+    R18 = ([2, 2, 2, 2], [64, 128, 256, 512], False)
+    target = ternary_bits(*R18)
+    print(f"ternary R18 params={n_params(*R18):,}  exported={target:,} bits = {target/MB:.4f} MB")
+    print(f"fp32    R18 exported={fp32_bits(*R18)/MB:.4f} MB\n")
 
-print(f"{'depth':>6} {'params':>10} {'MB (correct)':>13} {'|d|/target':>11} "
-      f"{'MB (literal)':>13} {'|d|/target':>11}   optB params")
-rows = []
-for depth, n in {20: 3, 32: 5, 44: 7, 56: 9, 110: 18}.items():
-    blocks, chans = [n] * 3, [16, 32, 64]
-    ok, lit = fp32_bits(blocks, chans, True), fp32_bits_preregliteral(blocks, chans, True)
-    p_a, p_b = n_params(blocks, chans, True), n_params(blocks, chans, False)
-    rows.append((depth, abs(ok - target) / target, abs(lit - target) / target))
-    print(f"{depth:>6} {p_a:>10,} {ok/MB:>13.4f} {abs(ok-target)/target:>11.4f} "
-          f"{lit/MB:>13.4f} {abs(lit-target)/target:>11.4f}   {p_b:>10,}")
+    print(f"{'depth':>6} {'params':>10} {'MB (correct)':>13} {'|d|/target':>11} "
+          f"{'MB (literal)':>13} {'|d|/target':>11}   optB params")
+    rows = []
+    for depth, n in {20: 3, 32: 5, 44: 7, 56: 9, 110: 18}.items():
+        blocks, chans = [n] * 3, [16, 32, 64]
+        ok, lit = fp32_bits(blocks, chans, True), fp32_bits_preregliteral(blocks, chans, True)
+        p_a, p_b = n_params(blocks, chans, True), n_params(blocks, chans, False)
+        rows.append((depth, abs(ok - target) / target, abs(lit - target) / target))
+        print(f"{depth:>6} {p_a:>10,} {ok/MB:>13.4f} {abs(ok-target)/target:>11.4f} "
+              f"{lit/MB:>13.4f} {abs(lit-target)/target:>11.4f}   {p_b:>10,}")
 
-best_ok = min(rows, key=lambda r: r[1])
-best_lit = min(rows, key=lambda r: r[2])
-print(f"\nargmin correct convention : ResNet-{best_ok[0]}")
-print(f"argmin prereg-literal     : ResNet-{best_lit[0]}")
-print(f"5% tie-break band members : {[r[0] for r in rows if abs(r[1]-best_ok[1]) < 0.05]}")
+    best_ok = min(rows, key=lambda r: r[1])
+    best_lit = min(rows, key=lambda r: r[2])
+    print(f"\nargmin correct convention : ResNet-{best_ok[0]}")
+    print(f"argmin prereg-literal     : ResNet-{best_lit[0]}")
+    print(f"5% tie-break band members : {[r[0] for r in rows if abs(r[1]-best_ok[1]) < 0.05]}")
+
+
+if __name__ == "__main__":
+    report()
