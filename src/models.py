@@ -106,8 +106,14 @@ def resnet34_cifar(num_classes=10):
 
 
 def resnet6n2(n, num_classes=10):
-    """n in {3,5,7,9,18} -> ResNet-20/32/44/56/110. Arm E candidates (prereg §6)."""
-    return ResNetCifar([2 * n] * 3, [16, 32, 64], option_a=True, num_classes=num_classes)
+    """n in {3,5,7,9,18} -> ResNet-20/32/44/56/110. Arm E candidates (prereg §6).
+
+    n BasicBlocks per stage, NOT 2n: each block is 2 conv layers, so 3 stages x n blocks
+    x 2 layers + stem + fc = 6n+2. Handoff §4.2 says "2n BasicBlocks", which would give
+    12n+2 (ResNet-38 at n=3) and roughly double the parameters. Cross-check: n=3 here
+    yields 269,722 params, matching He et al.'s published 0.27M for ResNet-20.
+    """
+    return ResNetCifar([n] * 3, [16, 32, 64], option_a=True, num_classes=num_classes)
 
 
 ARM_E_CANDIDATES = {20: 3, 32: 5, 44: 7, 56: 9, 110: 18}  # depth -> n
