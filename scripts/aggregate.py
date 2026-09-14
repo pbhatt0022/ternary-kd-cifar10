@@ -18,6 +18,7 @@ from src.train import ARM_SPEC, CHECKPOINT_EPOCHS, build_model
 HEADLINE_ORDER = ("T", "A", "B", "C", "D", "E")
 SEEDS_EXPECTED = {"T": 1, "A": 3, "B": 2, "C": 3, "D": 3, "E": 1}
 SUGGESTIVE_MULTIPLIER = 2
+SWEEP_SEEDS = (0, 1)  # section 9: every sweep point rests on seeds 0 and 1
 
 
 def spread(values):
@@ -88,9 +89,7 @@ def arm_summary(group, records, discarded):
 def interpret(summaries):
     """The section 8 rules, verbatim, as code. Each returns its own verdict string."""
     verdicts = {}
-    have = lambda *keys: all(k in summaries for k in keys)
-
-    if not have("A", "B", "C", "D"):
+    if not all(key in summaries for key in "ABCD"):
         verdicts["status"] = "incomplete: need arms A, B, C and D for the section 8 rules"
         return verdicts
 
@@ -210,6 +209,70 @@ def curves(records, key):
     return series
 
 
+def sweep_summary(results):
+    """The temperature sweep, per section 9.
+
+    The T=4 point is arm D at seeds 0 and 1 ONLY -- not arm D's three-seed mean. Section 9
+    defines it that way, and mixing a 3-seed mean against two 2-seed points would bias the
+    comparison. Arm C is the no-teacher reference line.
+    """
+    points = {}
+    for temperature, group in ((2.0, "D_T2"), (4.0, "D"), (8.0, "D_T8")):
+        records = [r for r in results.get(group, []) if r["seed"] in SWEEP_SEEDS]
+        if len(records) < len(SWEEP_SEEDS):
+            continue
+        means = [r["last10_mean"] for r in records]
+        points[temperature] = {
+            "mean": sum(means) / len(means),
+            "spread": spread(means),
+            "seeds": sorted(r["seed"] for r in records),
+            "source": group,
+        }
+
+    if len(points) < 3:
+        return points, f"incomplete: {len(points)} of 3 temperature points available"
+
+    ordered = [points[t]["mean"] for t in sorted(points)]
+    spreads = [points[t]["spread"] for t in points if points[t]["spread"] is not None]
+    max_spread = max(spreads) if spreads else None
+
+    rising = all(b > a for a, b in zip(ordered, ordered[1:]))
+    falling = all(b < a for a, b in zip(ordered, ordered[1:]))
+    difference = max(ordered) - min(ordered)
+
+    if rising or falling:
+        verdict = (
+            f"monotone {'increasing' if rising else 'decreasing'} in T "
+            f"({' -> '.join(f'{m:.2f}%' for m in ordered)})"
+        )
+    elif max_spread is not None and difference > max_spread:
+        verdict = (
+            f"non-monotone, but the {difference:.2f}pp range exceeds the largest "
+            f"across-seed spread ({max_spread:.2f}pp), so the differences are reported"
+        )
+    else:
+        verdict = (
+            f"flat: the {difference:.2f}pp range does not exceed the largest across-seed "
+            f"spread ({max_spread:.2f}pp)" if max_spread is not None else "flat"
+        )
+    return points, verdict
+
+
+def per_layer_reversal_curves(records):
+    """(label, layer, epoch, reversal_rate) rows. Null epochs are skipped, not zero-filled."""
+    rows = []
+    for record in records:
+        for line in record["metrics_path"].read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            for name, values in entry.get("per_layer", {}).items():
+                rate = values.get("reversal_rate")
+                if rate is not None:
+                    rows.append((record["label"], name, entry["epoch"], rate))
+    return rows
+
+
 def _fmt(value, digits=2, suffix=""):
     return "n/a" if value is None else f"{value:.{digits}f}{suffix}"
 
@@ -235,16 +298,32 @@ def write_report(out_dir, summaries, verdicts, results, discarded):
             f"{s['macs']:,} |"
         )
 
-    sweep = sorted(g for g in summaries if g not in HEADLINE_ORDER)
-    if sweep:
-        lines += ["", "## Temperature sweep", "",
-                  "| point | seeds | last-10 test mean | spread |", "|" + "---|" * 4]
-        for group in sweep:
-            s = summaries[group]
+    sweep_points, sweep_verdict = sweep_summary(results)
+    if sweep_points:
+        lines += ["", "## Temperature sweep (section 9)", "",
+                  "| T | seeds | source runs | last-10 test mean | spread |",
+                  "|" + "---|" * 5]
+        for temperature in sorted(sweep_points):
+            point = sweep_points[temperature]
             lines.append(
-                f"| {group} | {s['n_seeds']} | {s['last10_test_mean']:.2f}% | "
-                f"{_fmt(s['last10_test_spread'], suffix='pp')} (2 seeds) |"
+                f"| {temperature:g} | {len(point['seeds'])} | `{point['source']}` | "
+                f"{point['mean']:.2f}% | {_fmt(point['spread'], suffix='pp')} (2 seeds) |"
             )
+        if "C" in summaries:
+            lines.append(
+                f"| - | {summaries['C']['n_seeds']} | `C` (no-teacher reference) | "
+                f"{summaries['C']['last10_test_mean']:.2f}% | "
+                f"{_fmt(summaries['C']['last10_test_spread'], suffix='pp')} |"
+            )
+        lines += [
+            "",
+            f"**Sweep verdict:** {sweep_verdict}",
+            "",
+            "The T=4 point is arm D at seeds 0 and 1 only, per section 9 -- not arm D's",
+            "three-seed mean, so all three points rest on the same seed count. The sweep",
+            "cannot revise any headline number; a temperature beating T=4 is reported as an",
+            "unexploited finding.",
+        ]
 
     lines += ["", "## Interpretation (section 8 rules, applied as code)", ""]
     if "max_within_arm_spread" in verdicts:
@@ -336,6 +415,17 @@ def write_curve_data(out_dir, results):
             path = out_dir / name
             path.write_text("\n".join(rows) + "\n", encoding="utf-8")
             written.append(path)
+
+    # Per-layer reversal curves, which section 7 requires alongside the aggregate series.
+    rows = ["label,layer,epoch,reversal_rate"]
+    for group, records in sorted(results.items()):
+        for label, layer, epoch, rate in per_layer_reversal_curves(records):
+            rows.append(f"{label},{layer},{epoch},{rate}")
+    if len(rows) > 1:
+        path = out_dir / "reversal_curves_per_layer.csv"
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+        written.append(path)
+
     return written
 
 
