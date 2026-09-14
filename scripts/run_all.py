@@ -9,6 +9,7 @@ disconnect resumes exactly where it stopped (amendment A3).
 """
 
 import argparse
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -49,6 +50,21 @@ def val_accuracies(runs_dir, label, epochs):
     return [records[e] for e in epochs if e in records]
 
 
+def _code_fingerprint():
+    """Hash of everything Phase 0 actually verifies: src/ plus the verify script itself.
+
+    Keyed on content rather than the commit hash so that edits to the notebook, the README
+    or the orchestrator do not force the six determinism epochs to run again, while any
+    change to training or to the checks does.
+    """
+    digest = hashlib.sha256()
+    paths = sorted((REPO / "src").glob("*.py")) + [REPO / "scripts" / "verify.py"]
+    for path in paths:
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def _run(cmd):
     print(f"\n$ {' '.join(str(c) for c in cmd)}")
     return subprocess.run(cmd, cwd=REPO).returncode
@@ -57,9 +73,9 @@ def _run(cmd):
 def phase0(args):
     """Pre-flight. Nothing trains until this passes.
 
-    The determinism check trains six short epochs, so the pass is recorded against the
-    commit it passed at: a resumed session at the same commit skips it, and any code
-    change forces it to run again.
+    The determinism check trains six short epochs, so the pass is recorded against a
+    fingerprint of the code it verified: a resumed session skips it, and any change to
+    src/ or to verify.py forces it to run again.
     """
     print("\n=== Phase 0: pre-flight ===")
     if args.skip_verify:
@@ -67,9 +83,9 @@ def phase0(args):
         return 0
 
     marker = pathlib.Path(args.runs_dir) / ".preflight_passed"
-    commit = train._git_commit()
-    if marker.exists() and marker.read_text(encoding="utf-8").strip() == commit:
-        print(f"already passed at commit {commit[:8]}")
+    fingerprint = _code_fingerprint()
+    if marker.exists() and marker.read_text(encoding="utf-8").strip() == fingerprint:
+        print(f"already passed for this code state ({fingerprint[:8]})")
         return 0
 
     if _run([sys.executable, "-m", "pytest", "tests", "-q"]):
@@ -79,8 +95,8 @@ def phase0(args):
         sys.executable, "scripts/verify.py",
         "--data-dir", args.data_dir, "--runs-dir", args.runs_dir,
     ])
-    if code == 0 and commit != "unknown":
-        marker.write_text(commit, encoding="utf-8")
+    if code == 0:
+        marker.write_text(fingerprint, encoding="utf-8")
     return code
 
 
