@@ -1,0 +1,5 @@
+# fp32 only, no AMP (prereg §5). Versions are whatever Colab ships; nothing here is pinned
+# because the manifest records torch_version/cuda_version per run instead.
+torch
+torchvision
+numpy
