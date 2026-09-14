@@ -133,6 +133,19 @@ def phase2(args):
     mean = sum(accuracies) / len(accuracies)
     print(f"teacher last-10 mean validation accuracy: {mean:.2f}%")
 
+    # Recorded so Phase 3 can refuse to start on an ungated teacher, which is what makes
+    # queueing the phases back to back safe.
+    gate_path = pathlib.Path(args.runs_dir) / "teacher_gate.json"
+    gate_path.write_text(
+        json.dumps({
+            "last10_mean_val_accuracy": mean,
+            "threshold": TEACHER_GATE_VAL_ACCURACY,
+            "passed": mean >= TEACHER_GATE_VAL_ACCURACY,
+            "overridden": bool(args.skip_gate),
+        }, indent=2),
+        encoding="utf-8",
+    )
+
     if mean < TEACHER_GATE_VAL_ACCURACY:
         print(
             f"HALT: below the {TEACHER_GATE_VAL_ACCURACY}% gate. Section 6 treats this as a\n"
@@ -193,6 +206,24 @@ def run_arm(arm, needed, args, temperature=None, label_prefix=None):
 
 def phase3(args):
     print("\n=== Phase 3: headline arms ===")
+
+    # Section 6: the study does not proceed on a teacher that failed its gate. Checked here
+    # rather than trusting phase order, so Phase 3 can be queued behind Phase 2 overnight
+    # and will still stop itself if the teacher came out wrong.
+    gate_path = pathlib.Path(args.runs_dir) / "teacher_gate.json"
+    if not gate_path.exists():
+        print(f"HALT: {gate_path} missing. Phase 2 must complete before Phase 3.")
+        return 1
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    if not gate["passed"] and not gate.get("overridden"):
+        print(
+            f"HALT: the teacher scored {gate['last10_mean_val_accuracy']:.2f}% against a "
+            f"{gate['threshold']}% gate and the failure was not investigated. Section 6\n"
+            "treats this as a pipeline bug. Do not train the headline arms against a\n"
+            "teacher that has not been accounted for."
+        )
+        return 1
+
     summary = {}
     for arm, needed in HEADLINE_ARMS.items():
         result = run_arm(arm, needed, args)

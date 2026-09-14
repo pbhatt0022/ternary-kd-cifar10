@@ -18,14 +18,36 @@ from src.evaluate import evaluate_run
 from src.train import BATCH_SIZE
 
 
+SEEDS_EXPECTED = {"T": 1, "A": 3, "B": 2, "C": 3, "D": 3, "E": 1, "D_T2": 2, "D_T8": 2}
+
+
 def completed_runs(runs_dir):
-    """Every run directory whose manifest says it finished cleanly, in a stable order."""
-    labels = []
+    """Runs eligible for test evaluation, grouped by arm, in a stable order.
+
+    Section 2 allows the test set only once an arm's training is COMPLETE, so an arm with
+    fewer completed runs than its seed complement is held back entirely. Without this, a
+    Phase 4 run triggered while Phase 3 is still going would read the test set early for a
+    half-finished arm -- which cannot be undone once done.
+    """
+    by_group = {}
     for manifest_path in sorted(pathlib.Path(runs_dir).glob("*/manifest.json")):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if manifest.get("discard_status") == "completed":
-            labels.append(manifest_path.parent.name)
-    return labels
+        if manifest.get("discard_status") != "completed":
+            continue
+        label = manifest_path.parent.name
+        by_group.setdefault(label.rsplit("_", 1)[0], []).append(label)
+
+    eligible, held_back = [], []
+    for group, labels in sorted(by_group.items()):
+        needed = SEEDS_EXPECTED.get(group)
+        if needed is not None and len(labels) < needed:
+            held_back.append(f"{group} ({len(labels)}/{needed})")
+            continue
+        eligible.extend(sorted(labels))
+
+    if held_back:
+        print("held back, arm not finished: " + ", ".join(held_back))
+    return eligible
 
 
 def main():
