@@ -210,19 +210,34 @@ def phase3(args):
     # Section 6: the study does not proceed on a teacher that failed its gate. Checked here
     # rather than trusting phase order, so Phase 3 can be queued behind Phase 2 overnight
     # and will still stop itself if the teacher came out wrong.
-    gate_path = pathlib.Path(args.runs_dir) / "teacher_gate.json"
-    if not gate_path.exists():
-        print(f"HALT: {gate_path} missing. Phase 2 must complete before Phase 3.")
+    teacher_label = f"{TEACHER[0]}_{TEACHER[1]}"
+    if status_of(args.runs_dir, teacher_label) != "completed":
+        print(f"HALT: {teacher_label} has not completed. Phase 2 must finish first.")
         return 1
-    gate = json.loads(gate_path.read_text(encoding="utf-8"))
-    if not gate["passed"] and not gate.get("overridden"):
+
+    # Recomputed from metrics.jsonl rather than read from teacher_gate.json, so this works
+    # regardless of which code version trained the teacher.
+    accuracies = val_accuracies(args.runs_dir, teacher_label, LAST_10)
+    if len(accuracies) != 10:
+        print(f"HALT: {teacher_label} has {len(accuracies)} of 10 final-window epochs")
+        return 1
+    mean = sum(accuracies) / len(accuracies)
+    gate_path = pathlib.Path(args.runs_dir) / "teacher_gate.json"
+    overridden = args.skip_gate or (
+        gate_path.exists()
+        and json.loads(gate_path.read_text(encoding="utf-8")).get("overridden", False)
+    )
+    if mean < TEACHER_GATE_VAL_ACCURACY and not overridden:
         print(
-            f"HALT: the teacher scored {gate['last10_mean_val_accuracy']:.2f}% against a "
-            f"{gate['threshold']}% gate and the failure was not investigated. Section 6\n"
-            "treats this as a pipeline bug. Do not train the headline arms against a\n"
-            "teacher that has not been accounted for."
+            f"HALT: the teacher scored {mean:.2f}% against a "
+            f"{TEACHER_GATE_VAL_ACCURACY}% gate, and the failure has not been\n"
+            "investigated. Section 6 treats this as a pipeline bug. Do not train the\n"
+            "headline arms against a teacher that has not been accounted for.\n"
+            "Re-run with --skip-gate only after investigating and recording it."
         )
         return 1
+    print(f"teacher gate: {mean:.2f}% "
+          f"({'passed' if mean >= TEACHER_GATE_VAL_ACCURACY else 'OVERRIDDEN'})")
 
     summary = {}
     for arm, needed in HEADLINE_ARMS.items():
