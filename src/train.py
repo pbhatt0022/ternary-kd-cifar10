@@ -191,13 +191,18 @@ def is_complete(runs_dir, label):
     return status is not None and status != "running"
 
 
-def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device=None):
+def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device=None,
+        max_epochs=None):
     """Train one run to completion and return its manifest.
 
     `label` names the run directory and defaults to f"{arm}_{seed}". It is overridden for
     the temperature sweep, whose points reuse arm D and its seeds.
+
+    `max_epochs` shortens the run and exists only for the determinism check in
+    scripts/verify.py. Every reported run uses the pre-registered EPOCHS.
     """
     spec = ARM_SPEC[arm]
+    total_epochs = max_epochs or EPOCHS
     label = label or f"{arm}_{seed}"
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -229,7 +234,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
         "start_time": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "end_time": None,
         "hyperparameters": {
-            "epochs": EPOCHS,
+            "epochs": total_epochs,
             "lr": LR,
             "milestones": list(MILESTONES),
             "gamma": GAMMA,
@@ -265,7 +270,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
     else:
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    for epoch in range(start_epoch, EPOCHS + 1):
+    for epoch in range(start_epoch, total_epochs + 1):
         epoch_lr = lr_for_epoch(epoch)
         for group in optimizer.param_groups:
             group["lr"] = epoch_lr
@@ -345,16 +350,17 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
             seconds = record["epoch_wall_time"]
             print(
                 f"[{label}] {seconds:.1f}s/epoch measured -> "
-                f"~{seconds * (EPOCHS - epoch) / 3600:.2f}h remaining on this run"
+                f"~{seconds * (total_epochs - epoch) / 3600:.2f}h remaining on this run"
             )
         print(
-            f"[{label}] epoch {epoch}/{EPOCHS} lr={epoch_lr:g} "
+            f"[{label}] epoch {epoch}/{total_epochs} lr={epoch_lr:g} "
             f"loss={loss_mean:.4f} val={val_accuracy:.2f}%"
         )
 
-    # Discard criterion 2: the run did not learn at all over its whole length.
+    # Discard criterion 2: the run did not learn at all over its whole length. Only
+    # meaningful for a full-length run; a 2-epoch verification run is not judged by it.
     last_record = json.loads(metrics_path.read_text(encoding="utf-8").splitlines()[-1])
-    if last_record["train_loss_mean"] > epoch1_loss:
+    if total_epochs == EPOCHS and last_record["train_loss_mean"] > epoch1_loss:
         manifest["discard_status"] = "discarded:loss_did_not_decrease"
         print(
             f"[{label}] DISCARD: epoch 160 loss {last_record['train_loss_mean']:.4f} "
