@@ -9,6 +9,7 @@ what makes arm E's selection pre-computable; if a trained model's zero fraction 
 needed here, something has gone wrong.
 """
 
+import torch
 import torch.nn as nn
 
 FP32_BITS = 32
@@ -84,3 +85,40 @@ def bits_per_weight(model, ternary_conv_names=()):
 
 def mb(bits):
     return bits / BITS_PER_MB
+
+
+def macs(model, input_size=(1, 3, 32, 32)):
+    """Multiply-accumulates for one forward pass.
+
+    Reported alongside storage because weight ternarization leaves this number completely
+    unchanged: the same convolutions run over the same shapes. Section 7 requires stating
+    that in the same paragraph as any compression claim.
+    """
+    total = 0
+    handles = []
+
+    def conv_hook(module, _inputs, output):
+        nonlocal total
+        per_sample = output.numel() // output.shape[0]  # out_ch * out_h * out_w
+        kernel = module.kernel_size[0] * module.kernel_size[1]
+        total += per_sample * (module.in_channels // module.groups) * kernel
+
+    def linear_hook(module, _inputs, _output):
+        nonlocal total
+        total += module.in_features * module.out_features
+
+    for module in model.modules():
+        if isinstance(module, nn.Conv2d):
+            handles.append(module.register_forward_hook(conv_hook))
+        elif isinstance(module, nn.Linear):
+            handles.append(module.register_forward_hook(linear_hook))
+
+    was_training = model.training
+    model.eval()
+    with torch.no_grad():
+        device = next(model.parameters()).device
+        model(torch.zeros(input_size, device=device))
+    for handle in handles:
+        handle.remove()
+    model.train(was_training)
+    return total
