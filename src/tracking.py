@@ -85,11 +85,14 @@ class TernaryTracker:
     def state_dict(self):
         return {
             "epoch": self.epoch,
-            "prev_state": self.prev_state,
-            "last_change_dir": self.last_change_dir,
+            "prev_state": {k: v.clone() for k, v in self.prev_state.items()},
+            "last_change_dir": {k: v.clone() for k, v in self.last_change_dir.items()},
         }
 
     def load_state_dict(self, sd):
+        # Both directions copy. Handing out or adopting live references makes the restored
+        # tracker alias the original, so an update to one silently rewrites the other's
+        # prev_state and its next reversal count comes out zero.
         self.epoch = sd["epoch"]
-        self.prev_state = sd["prev_state"]
-        self.last_change_dir = sd["last_change_dir"]
+        self.prev_state = {k: v.clone() for k, v in sd["prev_state"].items()}
+        self.last_change_dir = {k: v.clone() for k, v in sd["last_change_dir"].items()}

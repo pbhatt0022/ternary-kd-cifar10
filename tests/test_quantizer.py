@@ -46,26 +46,54 @@ def test_delta_uses_filter_level_n():
     assert torch.allclose(w_t[1].reshape(-1), torch.tensor([100.0, 0.0, 0.0, 0.0]))
 
 
-def test_degenerate_filter_fallback():
-    """A uniform filter has every |w| == Delta exactly, and > is strict, so support is
-    empty and the fallback must fire, leaving exactly one surviving weight."""
-    n = 4
-    w = torch.full((1, 1, 2, 2), 0.75 / n * 4 / 1.0)  # any uniform filter degenerates
-    w = torch.full((1, 1, 2, 2), 2.0)
+def test_degenerate_fires_only_on_an_all_zero_filter():
+    """Delta = 0.75 * mean|w|, and max|w| >= mean|w| > 0.75 * mean|w| for any filter that
+    is not identically zero. So the support is non-empty for every nonzero filter, and the
+    fallback can fire only on an exactly-zero one -- which is the absorbing state the
+    pre-registration introduces it to rescue."""
+    w = torch.zeros(3, 1, 2, 2)
+    w[1] = 1.0  # uniform: Delta = 0.75, every weight survives
+    w[2] = torch.tensor([0.0, 0.0, 0.0, 7.0]).reshape(1, 2, 2)  # spike: only the 7 survives
+    _, degenerate = ternarize(w)
+    assert degenerate.tolist() == [True, False, False]
+
+
+def test_uniform_filter_keeps_every_weight():
+    """Delta = 0.75 * c for a filter uniformly equal to c, and c > 0.75 * c, so nothing is
+    thresholded away and alpha == c."""
+    w = torch.full((1, 1, 2, 2), 3.0)
     w_t, degenerate = ternarize(w)
-    assert bool(degenerate[0])
-    nonzero = w_t.reshape(-1).nonzero().flatten()
-    assert len(nonzero) == 1
-    assert torch.allclose(w_t.reshape(-1)[nonzero[0]].abs(), torch.tensor(2.0))
+    assert not degenerate.any()
+    assert torch.allclose(w_t, torch.full((1, 1, 2, 2), 3.0))
 
 
-def test_degenerate_keeps_sign_and_support_nonempty():
-    w = torch.full((3, 1, 2, 2), -5.0)
+def test_all_zero_filter_is_finite_not_nan():
+    """What the fallback actually buys: with an empty support the divisor would be 0 and
+    alpha would be 0/0 = NaN, poisoning the forward pass."""
+    w = torch.zeros(2, 1, 3, 3)
     w_t, degenerate = ternarize(w)
     assert degenerate.all()
-    flat = w_t.reshape(3, -1)
-    assert (flat != 0).sum(dim=1).tolist() == [1, 1, 1]  # prereg §9: support never empty
-    assert (flat.sum(dim=1) < 0).all()  # sign preserved
+    assert torch.isfinite(w_t).all()
+    assert torch.all(w_t == 0)
+
+
+def test_degenerate_never_fires_on_random_weights():
+    torch.manual_seed(5)
+    for scale in (1e-4, 1.0, 1e3):
+        _, degenerate = ternarize(torch.randn(16, 8, 3, 3) * scale)
+        assert not degenerate.any()
+
+
+def test_support_is_never_empty():
+    """prereg section 9: assert the support is non-empty after the fallback."""
+    torch.manual_seed(6)
+    for w in (torch.randn(8, 4, 3, 3), torch.zeros(4, 2, 3, 3), torch.full((3, 1, 2, 2), -5.0)):
+        w_t, _ = ternarize(w)
+        counts = (w_t.reshape(w.shape[0], -1) != 0).sum(dim=1)
+        # an all-zero filter has a one-element support whose value is itself zero, so
+        # count nonzeros only where the filter had any magnitude to begin with
+        had_magnitude = w.reshape(w.shape[0], -1).abs().sum(dim=1) > 0
+        assert (counts[had_magnitude] > 0).all()
 
 
 def test_ste_is_identity_passthrough():
