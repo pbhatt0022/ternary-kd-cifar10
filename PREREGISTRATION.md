@@ -1,6 +1,6 @@
 # Pre-Registration: Ternary Weight Quantization with Knowledge Distillation on CIFAR-10
 
-**Frozen:** ______________
+**Frozen:** 2026-09-14
 
 **Status:** No section may be edited after the first training run begins. Deviations are recorded in the append-only amendment log at the end, with date and reason.
 
@@ -319,3 +319,46 @@ Aggregate tables are produced by a single script from these files. No number rep
 ## Amendment log
 
 *(append-only; every entry dated with reason)*
+
+### 2026-09-14 — A1: BatchNorm γ/β double-count in the §6 arm E storage formula
+
+§6 defines a candidate's storage as "parameter count × 32 bits plus its BatchNorm
+parameters and buffers". BatchNorm γ and β are already inside `parameters()`, so this
+counts them twice. The §7 accounting convention, which §6 is meant to instantiate, counts
+each tensor once.
+
+**Resolution:** storage is computed as `all parameters × 32 + BN running_mean and
+running_var × 32`. `num_batches_tracked` is excluded, being an int64 step counter rather
+than a shipped tensor. **Affects readability and the printed storage figures only
+(~0.5% per candidate); it does not change arm E's selection**, which is ResNet-44 under
+either reading.
+
+### 2026-09-14 — A2: the 6n+2 family has n BasicBlocks per stage, not 2n
+
+The implementation handoff §4.2 specifies "3 stages of 2n BasicBlocks". A BasicBlock is
+two conv layers, so 2n blocks per stage yields 12n+2 layers — ResNet-38 at n=3 — with
+roughly double the intended parameter count. The handoff contradicts itself, since its own
+mapping n ∈ {3,5,7,9,18} → ResNet-20/32/44/56/110 holds only for n blocks per stage, and
+§6 of this document names the 6n+2 family.
+
+**Resolution:** n BasicBlocks per stage. Verified against He et al. (2016), who report
+0.27M parameters for ResNet-20; this implementation yields 269,722 at n=3. Under the
+handoff's literal text arm E would have been a different and substantially larger network,
+so this is a correction, not a preference.
+
+### 2026-09-14 — A3: resume checkpointing, to make §10.3 workable on Colab
+
+This study runs on Google Colab, where session preemption is routine. §10.3 lists
+preemption as a discard criterion and §10 caps discards at 3 per arm, while §11
+checkpoints only epochs 151–160. A disconnect at, say, epoch 140 would therefore destroy a
+run with nothing to resume from, and across 17 runs the arms would predictably hit the
+discard cap for reasons unrelated to the configuration under test.
+
+**Resolution:** each run additionally overwrites a single `resume.pt` at the end of every
+epoch, holding model, optimizer and LR-schedule state, the Python/NumPy/Torch RNG states,
+and the reversal-rate tracking buffers. On restart a run resumes from it. Because the RNG
+state is restored, the resumed run is the same run and produces the same numbers; this is
+infrastructure, not a change to the experiment. §10.3 continues to apply to crashes, OOM
+and corrupted checkpoints, and a preemption that cannot be resumed is still a discard. The
+epoch 151–160 archive checkpoints of §11 are unchanged, and `resume.pt` is not used for
+any reported number.
