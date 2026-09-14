@@ -43,18 +43,22 @@ print("flags False at run start, so the values above are just Colab defaults.")"
 
     md("""## 2. Drive
 
-`runs/` must live on Drive - it is the only thing that survives a disconnect. CIFAR-10
-stays on local disk, where it re-downloads in seconds and reads much faster."""),
+Both `runs/` and CIFAR-10 live on Drive. `runs/` has to, since it is the only thing that
+survives a disconnect. CIFAR-10 does too because the download measured 42 minutes on this
+connection, and `/content` is wiped every session - torchvision loads the dataset into RAM
+when it is constructed, so reading it from Drive costs seconds per run, not per batch."""),
     code("""import os
 from google.colab import drive
 
 drive.mount('/content/drive')
 
 RUNS_DIR = '/content/drive/MyDrive/atdl_runs'   # persistent
-DATA_DIR = '/content/data'                      # ephemeral, re-downloaded per session
+DATA_DIR = '/content/drive/MyDrive/atdl_data'   # persistent: CIFAR-10 downloads ONCE
 os.makedirs(RUNS_DIR, exist_ok=True)
 os.makedirs(f"{RUNS_DIR}/logs", exist_ok=True)
-print(RUNS_DIR, '->', sorted(os.listdir(RUNS_DIR)))"""),
+os.makedirs(DATA_DIR, exist_ok=True)
+print(RUNS_DIR, '->', sorted(os.listdir(RUNS_DIR)))
+print(DATA_DIR, '->', sorted(os.listdir(DATA_DIR)))"""),
 
     md("""## 3. Code
 
