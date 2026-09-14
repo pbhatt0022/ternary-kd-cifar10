@@ -228,6 +228,14 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
         "git_commit": _git_commit(),
         "hostname": socket.gethostname(),
         "gpu_model": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+        # Every GPU this run has trained on. A run resumed after a preemption may land on
+        # different hardware, and cuDNN can pick different kernels per architecture, so
+        # amendment A3's bitwise-resume guarantee holds only within one entry here. More
+        # than one entry means that run's determinism claim is weaker, and visibly so.
+        "gpu_models_seen": [
+            torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+        ],
+        "sessions": 1,
         "torch_version": torch.__version__,
         "cuda_version": torch.version.cuda,
         "python_version": platform.python_version(),
@@ -266,7 +274,22 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
         start_epoch = state["epoch"] + 1
         epoch1_loss = state["epoch1_loss"]
         _truncate_metrics(metrics_path, state["epoch"])
-        print(f"[{label}] resuming at epoch {start_epoch}")
+
+        # Carry forward what the original session recorded rather than overwriting it:
+        # the run started when it started, and the GPU history has to accumulate.
+        if manifest_path.exists():
+            previous = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["start_time"] = previous.get("start_time", manifest["start_time"])
+            seen = previous.get("gpu_models_seen", [])
+            current = manifest["gpu_model"]
+            manifest["gpu_models_seen"] = seen + ([current] if current not in seen else [])
+            manifest["sessions"] = previous.get("sessions", 1) + 1
+            if len(manifest["gpu_models_seen"]) > 1:
+                print(f"[{label}] NOTE: resumed on a different GPU than it started on "
+                      f"({manifest['gpu_models_seen']}); bitwise resume is not guaranteed "
+                      "across GPU models and the manifest records this.")
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        print(f"[{label}] resuming at epoch {start_epoch} (session {manifest['sessions']})")
     else:
         manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
