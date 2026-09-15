@@ -164,9 +164,14 @@ def _rng_state():
 def _restore_rng(state):
     random.setstate(state["python"])
     np.random.set_state(state["numpy"])
-    torch.set_rng_state(state["torch"])
+    # resume.pt is loaded with map_location=device, which moves every tensor in it to the
+    # GPU -- including these RNG ByteTensors. Both setters require CPU uint8 tensors, so
+    # coerce rather than assuming what the loader handed back.
+    torch.set_rng_state(state["torch"].cpu().to(torch.uint8))
     if state["cuda"] and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(state["cuda"])
+        torch.cuda.set_rng_state_all(
+            [s.cpu().to(torch.uint8) for s in state["cuda"]]
+        )
 
 
 def _truncate_metrics(path, last_epoch):
