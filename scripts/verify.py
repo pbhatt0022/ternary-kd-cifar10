@@ -119,6 +119,11 @@ def _data_hygiene():
     return None
 
 
+def _records(metrics_path):
+    lines = metrics_path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(l) for l in lines if l.strip()]
+
+
 def _short_run(seed, scratch, data_dir):
     """A fresh DETERMINISM_EPOCHS-epoch run, returning its per-epoch records."""
     if scratch.exists():
@@ -128,8 +133,39 @@ def _short_run(seed, scratch, data_dir):
         DETERMINISM_ARM, seed, scratch, data_dir,
         label="determinism", max_epochs=DETERMINISM_EPOCHS,
     )
-    lines = (scratch / "determinism" / "metrics.jsonl").read_text(encoding="utf-8")
-    return [json.loads(l) for l in lines.splitlines() if l.strip()]
+    return _records(scratch / "determinism" / "metrics.jsonl")
+
+
+def check_resume(runs_dir, data_dir):
+    """A resumed run must produce exactly what an uninterrupted one would (amendment A3).
+
+    Exercises the real resume path end to end: RNG state, optimizer state and the tracker's
+    reversal buffers all round-trip through resume.pt. Compares epoch 3 specifically,
+    because that is the first epoch where the reversal rate is non-null and so the only one
+    that can detect a tracker buffer that failed to restore.
+    """
+    scratch = pathlib.Path(runs_dir) / "_verify_resume"
+    if scratch.exists():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+
+    train.run(DETERMINISM_ARM, 0, scratch, data_dir, label="ref", max_epochs=3)
+    reference = _records(scratch / "ref" / "metrics.jsonl")
+
+    train.run(DETERMINISM_ARM, 0, scratch, data_dir, label="split", max_epochs=2)
+    train.run(DETERMINISM_ARM, 0, scratch, data_dir, label="split", max_epochs=3)
+    resumed = _records(scratch / "split" / "metrics.jsonl")
+    shutil.rmtree(scratch, ignore_errors=True)
+
+    if len(resumed) != 3:
+        return f"resumed run logged {len(resumed)} epochs, expected 3"
+
+    for key in ("train_loss_mean", "train_loss_final_step", "val_accuracy",
+                "aggregate_reversal_rate"):
+        want, got = reference[2].get(key), resumed[2].get(key)
+        if want != got:
+            return f"epoch 3 {key}: uninterrupted {want} vs resumed {got}"
+    return None
 
 
 def check_determinism(runs_dir, data_dir):
@@ -226,6 +262,12 @@ def main():
         print(f"...   determinism: {3 * DETERMINISM_EPOCHS} short epochs, please wait")
         reason = check_determinism(args.runs_dir, args.data_dir)
         print(("FAIL  " if reason else "ok    ") + "determinism"
+              + (f"\n      {reason}" if reason else ""))
+        failures += bool(reason)
+
+        print("...   resume: 6 short epochs, please wait")
+        reason = check_resume(args.runs_dir, args.data_dir)
+        print(("FAIL  " if reason else "ok    ") + "resume reproduces an uninterrupted run"
               + (f"\n      {reason}" if reason else ""))
         failures += bool(reason)
 
