@@ -174,6 +174,27 @@ def _restore_rng(state):
         )
 
 
+def _restore_loader_position(train_loader, seed, state):
+    """Put the sampler's generator back where an uninterrupted run would have left it.
+
+    The shuffling generator is seeded once and advances one draw per epoch, so a fresh
+    loader hands epoch N the permutation epoch 1 should have had. Restoring the model,
+    optimizer and RNG is not enough: without this, a resumed run trains on a different data
+    order and diverges silently, which is what the Phase 0 resume check caught.
+    """
+    generator = train_loader.generator
+    saved = state.get("loader_generator")
+    if saved is not None:
+        generator.set_state(saved.cpu().to(torch.uint8))
+        return
+
+    # resume.pt predating this field: replay the draws the sampler would have made, which
+    # is exactly equivalent to having saved the state.
+    generator.manual_seed(seed)
+    for _ in range(state["epoch"]):
+        torch.randperm(len(train_loader.dataset), generator=generator)
+
+
 def _truncate_metrics(path, last_epoch):
     """Drop metrics lines past the resume point, so a crash between appending a line and
     writing resume.pt cannot duplicate an epoch."""
@@ -276,6 +297,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
         if tracker is not None:
             tracker.load_state_dict(state["tracker"])
         _restore_rng(state["rng"])
+        _restore_loader_position(train_loader, seed, state)
         start_epoch = state["epoch"] + 1
         epoch1_loss = state["epoch1_loss"]
         _truncate_metrics(metrics_path, state["epoch"])
@@ -368,6 +390,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
                 "optimizer": optimizer.state_dict(),
                 "tracker": tracker.state_dict() if tracker is not None else None,
                 "rng": _rng_state(),
+                "loader_generator": train_loader.generator.get_state(),
                 "epoch": epoch,
                 "epoch1_loss": epoch1_loss,
             },
