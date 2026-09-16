@@ -375,3 +375,40 @@ document: averaging the ten checkpoints' weights is forbidden by §12, and choos
 by validation accuracy would be checkpoint selection, also forbidden by §12. Epoch 160 is the
 only choice that involves no selection. Decided before any KD arm trained; changes no
 reported number relative to the design, only fills a gap in it.
+
+### 2026-09-16 — A5: execution deviations, recorded before any test-set access
+
+Found by auditing every run's manifest and the append-only Phase 3 log after the headline
+arms finished and **before Phase 4 read the test set**. This entry is committed ahead of that
+evaluation, so the decisions in it could not have been informed by test results.
+
+**1. Correction to A3.** A3 states that a resumed run "is the same run and produces the same
+numbers". As first implemented that was false. Restoring model, optimizer and RNG state was
+not sufficient: the DataLoader's shuffling generator advances one draw per epoch and was not
+restored, so a resumed run trained on a different data order. It was found by a pre-flight
+check that compares a resumed run against an uninterrupted one, which gave epoch-3 training
+loss 1.15297 against 1.15979. It was fixed in commit `c588042` by saving and restoring the
+sampler state, and that check is now part of the pre-flight gate. A separate defect found on
+the first real resume, an RNG tensor mapped to the GPU on load, was fixed in `c2908a3`.
+
+**2. `A_0` resumed before that fix and is retained.** `A_0` resumed at epoch 40 under commit
+`dd2adb4`, so its epochs 40–160 reused the shuffle permutations of epochs 1–121. Its
+initialisation, hyperparameters, augmentation, optimizer state and RNG state were all
+correct. It meets none of the §10 discard criteria. The consequence is that `A_0` is not
+bitwise reproducible from seed 0, which §5's determinism statement otherwise promises. The
+substituted order is still random and independent of the arm, so it does not bias the arm
+comparison. Re-executing seed 0 was considered and declined for time; the decision was made
+before any test-set evaluation.
+
+Every other run was audited clean. Runs that never resumed are unaffected. `A_2` resumed on
+fixed code, per its manifest commit. `D_0` resumed three times and its manifest records only
+its last session's commit, but all three resumes appear after `A_2`'s in the append-only Phase
+3 log, and the code on the training machine only ever moves forward, so all ran on fixed code.
+
+**3. `A_2` is missing three log lines.** Its `metrics.jsonl` has no records for epochs
+123–125. The run did train through those epochs (its only resume was at epoch 150); only the
+log lines are absent, and the mechanism is not established. They fall outside the epoch
+151–160 window used for settledness and are read by no discard criterion, so no reported
+number depends on them. They cannot be recovered, since no checkpoint exists outside epochs
+151–160, and the gap is visible in that run's learning curve. As a precaution
+`metrics.jsonl` is now append-only, with repeated epochs resolved on read (`3ddbda4`).
