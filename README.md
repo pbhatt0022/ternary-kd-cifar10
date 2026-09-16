@@ -75,6 +75,11 @@ console output of every phase.
 
 ## Checkpoints
 
+Download (view only):
+[`atdl_submission`](https://drive.google.com/drive/folders/17othiYp228EzTOTxicTBcAypWRbcZFXd?usp=sharing),
+containing `teacher_resnet34_epoch160.pth`, `student_ternary_resnet18_epoch160.pth` (fp32 latent
+weights) and `student_ternary_resnet18_2bit.pth` (the deployable 2-bit export).
+
 The study deliberately performs **no best-checkpoint selection**: choosing the best epoch biases
 results upward in proportion to a run's variance. The submitted checkpoints are therefore the
 **final (epoch 160)** checkpoints of the teacher (`T_0`) and of the seed-0 ternary KD student
