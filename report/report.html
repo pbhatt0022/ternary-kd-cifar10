@@ -4,46 +4,39 @@
 <meta charset="utf-8">
 <title>Ternary ResNet-18 with Knowledge Distillation on CIFAR-10</title>
 <style>
-  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
-  :root { --ink:#1f1f1e; --muted:#5d5c56; --rule:#d9d8d0; --tint:#f4f3ee; --accent:#2a78d6; }
-  html { font-size: 9.9pt; }
-  body { font-family: Cambria, Georgia, "Times New Roman", serif; font-variant-numeric: lining-nums; color: var(--ink); line-height: 1.42;
-         margin: 0; background: #fff; }
-  h1 { font-size: 17pt; line-height: 1.2; margin: 0 0 4pt; }
-  h2 { font-size: 12.5pt; margin: 16pt 0 5pt; border-bottom: 0.6pt solid var(--rule);
-       padding-bottom: 2pt; break-after: avoid; }
-  h3 { font-size: 10.8pt; margin: 11pt 0 3pt; break-after: avoid; }
-  p { margin: 0 0 6pt; text-align: justify; hyphens: auto; }
-  .meta { color: var(--muted); font-size: 9.5pt; margin-bottom: 10pt; }
-  .abstract { background: var(--tint); padding: 8pt 11pt; margin: 8pt 0 12pt; font-size: 9.6pt; }
+  @page { size: A4; margin: 20mm 18mm 20mm 18mm; }
+  html { font-size: 11pt; }
+  body, table, code, pre, figcaption, .tcap, .meta, .abstract {
+    font-family: "Times New Roman", Times, serif; color: #000; }
+  body { line-height: 1.35; margin: 0; background: #fff; }
+  a { color: #000; }
+  h1 { font-size: 17pt; line-height: 1.2; margin: 0 0 6pt; text-align: center; }
+  h2 { font-size: 13pt; margin: 16pt 0 5pt; break-after: avoid; }
+  h3 { font-size: 11.5pt; margin: 11pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 6pt; text-align: justify; }
+  .meta { font-size: 10.5pt; margin-bottom: 10pt; text-align: center; }
+  .abstract { margin: 8pt 24pt 12pt; font-size: 10.5pt; }
   .abstract p { margin: 0; }
   figure { margin: 8pt 0 10pt; break-inside: avoid; text-align: center; }
   figure img { width: 100%; }
   figure.narrow img { width: 58%; }
   figure.mid img { width: 86%; }
-  figcaption { font-size: 8.8pt; color: var(--muted); text-align: justify; margin-top: 3pt; }
-  figcaption b { color: var(--ink); }
-  table { border-collapse: collapse; width: 100%; font-size: 8.9pt; margin: 5pt 0 3pt;
-          break-inside: avoid; font-family: "Segoe UI", Arial, sans-serif; }
-  th, td { padding: 2.6pt 5pt; border-bottom: 0.5pt solid var(--rule); text-align: left;
-           vertical-align: top; }
-  th { border-bottom: 0.9pt solid var(--ink); font-weight: 600; }
-  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
-  tr.key td { background: #eaf1fb; }
+  figcaption { font-size: 10pt; text-align: justify; margin-top: 3pt; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; margin: 5pt 0 3pt;
+          break-inside: avoid; }
+  th, td { padding: 2pt 5pt; border-bottom: 0.5pt solid #000; text-align: left; vertical-align: top; }
+  th { border-top: 1pt solid #000; border-bottom: 1pt solid #000; font-weight: bold; }
+  td.n, th.n { text-align: right; }
+  tr.key td:first-child { font-weight: bold; }
   .arms td:nth-child(-n+5), .arms th:nth-child(-n+5) { white-space: nowrap; }
-  .tcap { font-size: 8.8pt; color: var(--muted); margin: 0 0 10pt; text-align: justify; }
-  .tcap b { color: var(--ink); }
-  .eq { text-align: center; margin: 6pt 0 8pt; font-size: 10.6pt; }
-  .tbd { background: #fff1b8; color: #6b4e00; padding: 0 2pt; border-radius: 2pt;
-         font-family: "Segoe UI", Arial, sans-serif; font-size: 8.6pt; }
-  code { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: var(--tint);
-         padding: 0 2pt; }
-  ul, ol { margin: 0 0 6pt 16pt; padding: 0; }
+  .tcap { font-size: 10pt; margin: 0 0 10pt; text-align: justify; }
+  .eq { text-align: center; margin: 6pt 0 8pt; font-size: 11.5pt; }
+  code { font-size: 10.5pt; }
+  ul, ol { margin: 0 0 6pt 18pt; padding: 0; }
   li { margin-bottom: 2.5pt; text-align: justify; }
-  .refs li { font-size: 9pt; }
+  .refs li { font-size: 10.5pt; }
   .pagebreak { break-before: page; }
-  pre.appendix { white-space: pre-wrap; font-family: Consolas, "Courier New", monospace;
-                 font-size: 7.4pt; line-height: 1.32; background: var(--tint); padding: 8pt; }
+  pre.appendix { white-space: pre-wrap; font-size: 9pt; line-height: 1.3; }
 </style>
 </head>
 <body>
@@ -731,7 +724,7 @@ That conversation produced the two design documents in the repository, <code>PRE
 specification, including the training and evaluation pipeline, the tests and pre-flight checks, the Colab notebook, the
 analysis scripts and the figure script. Claude Code also drafted amendments A1–A5, each reviewed and approved before it
 was recorded. Commits in the repository are made under my account, but the code in them was written by Claude Code.
-<span class="tbd">TBD: link to the Claude Code conversation, and a sentence on how this report was drafted and edited.</span>
+The Claude Code session that produced the code, the analysis and this report is exported in full and included in the atdl_submission folder linked above. This report was drafted by Claude Code from the pre-registration, the code and the run data, and I reviewed it before submission.
 I ran all training and evaluation on Google Colab and made the decisions the process called for, including approving each
 amendment and retaining run A_0 rather than re-running it.</p>
 

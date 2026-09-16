@@ -11,3 +11,4 @@ report/*.log
 report/*.out
 report/_build.html
 report/build/
+report/report_gdocs.html
