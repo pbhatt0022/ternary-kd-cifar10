@@ -3,3 +3,9 @@ __pycache__/
 data/
 runs/
 .venv/
+report/data/
+report/figures/
+report/*.pdf
+report/*.aux
+report/*.log
+report/*.out
