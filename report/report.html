@@ -6,7 +6,7 @@
 <style>
   @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
   :root { --ink:#1f1f1e; --muted:#5d5c56; --rule:#d9d8d0; --tint:#f4f3ee; --accent:#2a78d6; }
-  html { font-size: 10.2pt; }
+  html { font-size: 9.9pt; }
   body { font-family: Cambria, Georgia, "Times New Roman", serif; font-variant-numeric: lining-nums; color: var(--ink); line-height: 1.42;
          margin: 0; background: #fff; }
   h1 { font-size: 17pt; line-height: 1.2; margin: 0 0 4pt; }
@@ -19,7 +19,8 @@
   .abstract p { margin: 0; }
   figure { margin: 8pt 0 10pt; break-inside: avoid; text-align: center; }
   figure img { width: 100%; }
-  figure.narrow img { width: 62%; }
+  figure.narrow img { width: 58%; }
+  figure.mid img { width: 86%; }
   figcaption { font-size: 8.8pt; color: var(--muted); text-align: justify; margin-top: 3pt; }
   figcaption b { color: var(--ink); }
   table { border-collapse: collapse; width: 100%; font-size: 8.9pt; margin: 5pt 0 3pt;
@@ -54,12 +55,11 @@ Code: <a href="https://github.com/pbhatt0022/ternary-kd-cifar10">github.com/pbha
 <div class="abstract"><p><b>Abstract.</b> We constrain 99.85% of a CIFAR-adapted ResNet-18's weights to
 {−α, 0, +α} using closed-form per-filter scaling and a straight-through estimator, and train it with
 and without knowledge distillation from a full-precision ResNet-34. The exported student occupies
-2.78 MB against 42.66 MB for the full-precision network, a 15.36× reduction at 2.09 bits per weight.
+2.78 MB against 42.66 MB for the full-precision network, a 15.36× reduction at 2.06 bits per parameter.
 Five arms separate the effect of ternarization from the effect of distillation, including a
 full-precision distillation control and a nearest-storage full-precision network. The design, the
 reporting metric and every rule for interpreting the results were fixed in a pre-registration before
-any training. <span class="tbd">TBD after Phase 4: one sentence each on accuracy of T, A and D, and
-the verdicts the pre-committed rules returned.</span></p></div>
+any training. Neither ternary arm's accuracy is distinguishable from full precision: 93.52% without a teacher and 93.96% with one, against 93.92%, all inside a 0.98-point seed spread. The teacher reached 93.74%, below the full-precision student, so under the pre-committed rules the distillation arms cannot be interpreted as distillation. The one resolved comparison concerns storage: a full-precision ResNet-44 of nearly the same exported size reached 90.15%, 3.8 points below the ternary student. In a temperature ablation, the ternary student's accuracy rose monotonically from <i>T</i> = 2 to <i>T</i> = 8.</p></div>
 
 <h2>1. Introduction</h2>
 
@@ -161,8 +161,7 @@ mean|<i>W<sub>k</sub></i>| and max|<i>W<sub>k</sub></i>| ≥ mean|<i>W<sub>k</su
 mean|<i>W<sub>k</sub></i>| whenever the filter is not identically zero, at least one weight always
 clears the threshold. The fallback can fire only on a filter that is exactly zero, which is precisely
 the absorbing state it exists to prevent, and its practical role is to stop α = 0/0 from producing
-NaN. We therefore expect, and log, degenerate-filter counts of zero. <span class="tbd">TBD: confirm
-counts from degenerate_curves.csv (expected: zero in every layer, every epoch, every run).</span></p>
+NaN. We therefore expect, and log, degenerate-filter counts of zero. The counts confirm it: zero degenerate filters in every layer, at every epoch, in every ternary run.</p>
 
 <h3>2.4 Latent weights and the straight-through estimator</h3>
 
@@ -374,18 +373,16 @@ apply only to B and D. No value was selected from data. The learning rate is com
 1-indexed epoch: PyTorch's <code>MultiStepLR</code> with these milestones and one step per epoch would drop at
 epochs 81 and 121, an off-by-one a verification check guards against.</p>
 
-<p>Measured cost on a T4 was 43 s per epoch for ternary ResNet-18 (arm C), 67.4 s for ResNet-34 (arm T) and
-66.7 s for ternary ResNet-18 with a teacher forward pass (arm D). <span class="tbd">TBD: arm A's measured
-epoch time from its metrics, giving the overhead of recomputing the quantizer.</span></p>
+<p>Median time per epoch on a T4 was 44.5 s for full-precision ResNet-18 (arm A) and 46.0 s for ternary ResNet-18 (arm C), so recomputing the quantizer on every forward pass cost about 3%. The teacher's forward pass added roughly 18 to 22 s (arms D and B, 63.9 s and 66.1 s). ResNet-34 took 66.8 s and ResNet-44 30.7 s.</p>
 
 <h3>5.2 Loss and accuracy curves</h3>
 
-<figure>
+<figure class="mid">
 <img src="figures/fig4_learning_curves.png" alt="Learning curves">
 <figcaption><b>Figure 4.</b> Training loss and validation accuracy against epoch for every arm, including the
 teacher. Thick lines are means over seeds; thin lines are individual seeds. Distillation losses include the
 <i>T</i>²-scaled KL term and are plotted separately from cross-entropy losses, since the two are on different
-scales. <span class="tbd">TBD: what to conclude.</span></figcaption>
+scales. No run diverged, and validation accuracy is flat from epoch 120 onward in every arm.</figcaption>
 </figure>
 
 <p>Per-epoch training accuracy was not part of the pre-registered log, so the curves show training loss and
@@ -393,8 +390,14 @@ validation accuracy. To report the teacher's train/test gap, which the brief ask
 computed afterwards from each run's final checkpoint on the 45,000 training images with augmentation off.
 <span class="tbd">TBD: train accuracy, test accuracy and gap for T, A and D, from train_accuracy.py.</span></p>
 
-<p><span class="tbd">TBD after data: confirm no divergence; flatness of validation accuracy over the final third as
-evidence the fixed 160-epoch budget did not undertrain the ternary arms.</span></p>
+<p>Training was stable in every arm. No loss became
+non-finite, every loss fell at each learning-rate drop, and validation accuracy was flat over the last 40 epochs:
+no headline run's final-window validation spread exceeded 0.28 points. That flatness is the evidence against
+undertraining. A fixed budget across precisions invites the objection that ternary arms converge more slowly and
+were cut short, but the ternary arms plateau as early as the full-precision ones (Figure 4d). The curves also show the
+shape of the headline result: arm E sits about four points below every ResNet-18 arm throughout, while the four
+ResNet-18 arms and the teacher finish within about a point of each other. The teacher's training loss fell below
+every cross-entropy student's, to 6.4×10<sup>−4</sup>, with no matching gain in validation accuracy.</p>
 
 <p>One data-quality note applies to Figure 4. Run A_2's log lacks records for epochs 123–125, so its curve has a
 three-epoch gap. The run trained through those epochs; only the log lines are missing (amendment A5).</p>
@@ -420,12 +423,19 @@ several epochs before reversing.</p>
 <img src="figures/fig5_reversal_rate.png" alt="Reversal rate">
 <figcaption><b>Figure 5.</b> Reversal rate against epoch. (a) Over all ternary weights, arms C and D, mean over
 seeds. (b, c) Per layer, colour darkening with depth. Dotted lines mark learning-rate drops.
-<span class="tbd">TBD: what to conclude, once plotted.</span></figcaption>
+Reversals are governed by the learning rate, falling about twentyfold at epoch 80 and about tenfold again at epoch 120. Arm D reverses more than arm C in every phase.</figcaption>
 </figure>
 
-<p><span class="tbd">TBD after data: whether reversals collapse at each learning-rate drop; whether D is noisier
-than C (if distillation destabilises ternary training, that is a finding in itself); which layers oscillate
-most.</span></p>
+<p>The learning rate governs oscillation. Averaged over
+all ternary weights, arm C reversed 7.94% of assignments per epoch while the learning rate was 0.1, 0.44% at 0.01 and
+0.032% at 0.001: an 18-fold drop at epoch 80 and a 14-fold drop at epoch 120. The discrete structure of the network is
+still changing substantially throughout the first phase and is close to fixed in the last. Arm D reversed more than
+arm C in every phase, at 9.13%, 0.47% and 0.051%: about 1.6 times C's rate in the final phase, and 2.5 times it in
+epochs 3 to 5. With the teacher rule in force we do not attribute that difference to distillation, but it is a
+measurable difference in dynamics between the two ternary arms. Across layers, the first ternary layer reversed least
+while the learning rate was high (5.2% in C, against up to 9.8% for deeper layers). In the final phase one layer
+stands out: the 1×1 downsample convolution of the second stage reversed at 0.080% in C and 0.245% in D, three to four
+times any other layer. It is the smallest ternary layer, at 8,192 weights; we did not investigate further.</p>
 
 <h3>5.4 Sparsity</h3>
 
@@ -433,12 +443,19 @@ most.</span></p>
 <img src="figures/fig6_zero_fraction.png" alt="Zero fraction">
 <figcaption><b>Figure 6.</b> Fraction of each layer's weights quantized to zero, against epoch, for arms C and D,
 colour darkening with depth. The shaded band is the 30–50% sparsity range in which TTQ reports lowest error.
-<span class="tbd">TBD: what to conclude.</span></figcaption>
+Every layer starts near 45%, the value a Gaussian initialisation predicts. Early layers gain far more sparsity than late ones, and the structure is essentially fixed by epoch 80.</figcaption>
 </figure>
 
-<p><span class="tbd">TBD after data: overall sparsity against TTQ's 30–50% band; whether the early and late
-layers move in opposite directions as TTQ observed (first ternary layer losing sparsity, last layers gaining
-it).</span></p>
+<p>Every layer starts at 44.7–45.8% zeros, which matches an
+analytic prediction: for Gaussian-initialised weights, the fraction below Δ = 0.75 · E|<i>w</i>| is 45.04%. That
+agreement is an independent check that the quantizer implements its formula. From there every layer gains sparsity,
+but unevenly. The first ternary layer rises from 44.7% to 60.4% in arm C (63.5% in D), while the last rises only from
+45.1% to 47.2%. Nearly all of the change happens before the first learning-rate drop: the first layer is at 60.3% by
+epoch 80 and 60.4% at epoch 160, in step with the collapse in reversals. Weighted by size, the network ends 47.1% zero
+in C and 48.2% in D, at the top of TTQ's 30–50% band [4]. TTQ reported that the first quantized layer <i>loses</i>
+sparsity during training while the last layers gain it. We reproduce only the second half: here the first ternary
+layer gains the most. The quantizers differ (learned scales in TTQ, closed-form here), as do the networks and data,
+and we did not test which difference is responsible.</p>
 
 <h3>5.5 Stability criteria and discards</h3>
 
@@ -451,12 +468,12 @@ unrelated to the comparison between the teacher and arm A, which uses test accur
 points. The criterion is weak by design: it catches a run whose final-phase variance makes a single number
 unreliable, and nothing subtler. An earlier two-part version, which also compared the final window against the
 window before the last learning-rate drop, was rejected as nearly vacuous, since a run noisy at the end is
-generally noisy earlier. <span class="tbd">TBD: which runs, if any, were flagged.</span></p>
+generally noisy earlier. <b>None of the 13 headline runs was flagged</b>: their final-window validation spreads ranged from 0.12 to 0.28 points. The four temperature-sweep runs were not flagged either, with spreads of 0.18 to 0.38 points.</p>
 
 <p>A run could be discarded only for a NaN or infinite training loss, for a mean training loss at epoch 160 above
 that at epoch 1, or for infrastructure failure. No criterion reads accuracy: a run that trains cleanly to a poor
 number is a result. Replacement seeds would have been drawn from a pre-listed sequence. <b>None of the 13 headline
-runs was discarded.</b> <span class="tbd">TBD: sweep runs' discard status.</span></p>
+runs was discarded.</b> The four temperature-sweep runs also completed without a discard.</p>
 
 <h3>5.6 Verification suite and the defects it caught</h3>
 
@@ -499,48 +516,61 @@ each GPU model it trained on.</p>
 
 <table>
 <tr><th>Arm</th><th class="n">Seeds</th><th class="n">Last-10 test mean</th><th class="n">Spread</th><th class="n">Epoch-160 test</th><th class="n">Unsettled</th><th class="n">Discards</th></tr>
-<tr class="key"><td>T teacher, ResNet-34 fp32</td><td class="n">1</td><td class="n"><span class="tbd">TBD</span></td><td class="n">n/a (1 seed)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
-<tr class="key"><td>A ResNet-18 fp32, CE</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
-<tr><td>B ResNet-18 fp32, KD</td><td class="n">2</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span> (2 seeds)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
-<tr><td>C ResNet-18 ternary, CE</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
-<tr class="key"><td>D ResNet-18 ternary, KD</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
-<tr><td>E ResNet-44 fp32, CE</td><td class="n">1</td><td class="n"><span class="tbd">TBD</span></td><td class="n">n/a (1 seed)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr class="key"><td>T teacher, ResNet-34 fp32</td><td class="n">1</td><td class="n">93.74</td><td class="n">n/a (1 seed)</td><td class="n">93.73</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="key"><td>A ResNet-18 fp32, CE</td><td class="n">3</td><td class="n">93.92</td><td class="n">0.42</td><td class="n">93.91</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>B ResNet-18 fp32, KD</td><td class="n">2</td><td class="n">94.26</td><td class="n">0.12 (2 seeds)</td><td class="n">94.22</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>C ResNet-18 ternary, CE</td><td class="n">3</td><td class="n">93.52</td><td class="n">0.98</td><td class="n">93.55</td><td class="n">0</td><td class="n">0</td></tr>
+<tr class="key"><td>D ResNet-18 ternary, KD</td><td class="n">3</td><td class="n">93.96</td><td class="n">0.43</td><td class="n">93.96</td><td class="n">0</td><td class="n">0</td></tr>
+<tr><td>E ResNet-44 fp32, CE</td><td class="n">1</td><td class="n">90.15</td><td class="n">n/a (1 seed)</td><td class="n">90.09</td><td class="n">0</td><td class="n">0</td></tr>
 </table>
 <p class="tcap"><b>Table 4.</b> Test accuracy (%). The primary metric is the mean of ten separately evaluated
 checkpoints from epochs 151–160. Spread is maximum minus minimum across seeds, in percentage points. Arms T and E
 have one seed and support threshold judgements only.</p>
 
-<p><span class="tbd">TBD after Phase 4, reported exactly as scripts/aggregate.py computed them:</span></p>
+<p>The pre-registered rules returned the following verdicts, as computed by <code>scripts/aggregate.py</code>:</p>
 <ul>
-<li><b>Teacher comparison.</b> <span class="tbd">TBD: T's test accuracy against arm A's mean, and whether B and D
-are interpretable as distillation.</span></li>
-<li><b>Recovery ratio.</b> <span class="tbd">TBD: the value of R, or that it is undefined and which condition
-triggered that.</span></li>
-<li><b>Interaction.</b> <span class="tbd">TBD: (D − C) − (B − A) with the verdict suggestive, unresolved, or not
-computed.</span></li>
-<li><b>Largest within-arm spread.</b> <span class="tbd">TBD</span>, including arm B, whose spread comes from two
-seeds.</li>
+<li><b>Teacher comparison.</b> The teacher's test accuracy, 93.74%, is below arm A's mean of 93.92%. Under the rule, the teacher provides no capability the student lacks: <b>arms B and D are uninterpretable as distillation results</b>, and the interaction term is not computed.</li>
+<li><b>Recovery ratio.</b> <b>Undefined.</b> Arm C sits below arm A, but |A − C| = 0.40 percentage points is smaller than the largest within-arm spread, 0.98 points (arm C). No recovery language is used.</li>
+<li><b>Interaction.</b> Not computed, because of the teacher comparison.</li>
+<li><b>Largest within-arm spread.</b> 0.98 percentage points, from arm C. Arm B, whose spread comes from two seeds, was included in that maximum.</li>
 </ul>
 
 <h3>6.2 Accuracy</h3>
 
-<p><span class="tbd">TBD after Phase 4.</span> If the ternary arms match or exceed full precision, we report that
-directly and explain the mechanism rather than search for a loss. ResNet-18 has 11.2M parameters for 45,000
-training images. TTQ [4] found ternarization improving on full precision for deeper CIFAR ResNets (32, 44 and 56
-layers) while costing accuracy only on the smallest, ResNet-20, and conjectured that ternary weights act as a
-capacity constraint that curbs overfitting; TWN [3] report the ternary gap shrinking as the backbone widens. If
-there is a loss, we report it with the pre-committed ratio and do not round favourably.</p>
+<p><b>No accuracy difference among the four ResNet-18 arms is resolved.</b> Their means span 93.52% (C) to
+94.26% (B), a 0.74-point range, below the largest within-arm spread of 0.98 points. Ternarization produced no
+measurable cost at this study's resolution: 93.52% without a teacher and 93.96% with one, against 93.92% for full
+precision. The rules do not allow the 0.40-point gap between A and C to be called a small cost; it is not
+resolved.</p>
+
+<p>That verdict turns on one run. Arm C's spread comes almost entirely from seed 1, at 92.87% against 93.84% and
+93.85% for the other two seeds. That run trained cleanly and meets none of the discard criteria, so it stays.
+Removing it after seeing the result would be the post-hoc selection the design exists to prevent; we point it out
+so the reader can see what drives the verdict.</p>
+
+<p>A ternary network matching full precision is plausible here. ResNet-18 has 11.2M parameters for 45,000 training
+images. TTQ [4] found ternarization improving on full precision for deeper CIFAR ResNets (32, 44 and 56 layers) while
+costing accuracy only on the smallest, ResNet-20, and conjectured that ternary weights act as a capacity constraint
+that curbs overfitting; TWN [3] report the ternary gap shrinking as the backbone widens. Our result is consistent with
+that account, though with three seeds it cannot distinguish "no cost" from a cost smaller than the noise.</p>
+
+<p><b>The teacher did not outperform the students.</b> Its 93.74% is below arms A, B and D, and its training loss
+reached 0.0006 by epoch 160, so it had fit the 45,000 training images almost exactly. With 21.3M parameters it is the
+largest network in the study and did not convert that capacity into test accuracy. The pre-registered teacher rule
+therefore applies, and arms B and D are not interpreted as distillation. Their gains over their no-teacher
+counterparts would be unresolved regardless: 0.34 points for B over A and 0.44 points for D over C, both inside the
+noise. <span class="tbd">TBD: teacher's train accuracy and train/test gap, from train_accuracy.py.</span></p>
 
 <h3>6.3 Compression</h3>
 
 <table>
 <tr><th>Model</th><th class="n">Parameters</th><th class="n">Bits / weight</th><th class="n">Exported storage</th><th class="n">vs fp32 ResNet-18</th><th class="n">MACs</th></tr>
-<tr><td>ResNet-18 fp32 (A, B)</td><td class="n">11,173,962</td><td class="n">32</td><td class="n">42.6619 MB</td><td class="n">1×</td><td class="n"><span class="tbd">TBD</span></td></tr>
-<tr class="key"><td>ResNet-18 ternary (C, D)</td><td class="n">11,173,962</td><td class="n">2.085</td><td class="n">2.7776 MB</td><td class="n">15.36× smaller</td><td class="n"><span class="tbd">TBD</span> (same as fp32)</td></tr>
-<tr><td>ResNet-44 fp32 (E)</td><td class="n">658,586</td><td class="n">32</td><td class="n">2.5244 MB</td><td class="n">16.90× smaller</td><td class="n"><span class="tbd">TBD</span></td></tr>
-<tr><td>ResNet-34 fp32 (T)</td><td class="n">21,282,122</td><td class="n">32</td><td class="n">81.2498 MB</td><td class="n">1.90× larger</td><td class="n"><span class="tbd">TBD</span></td></tr>
+<tr><td>ResNet-18 fp32 (A, B)</td><td class="n">11,173,962</td><td class="n">32</td><td class="n">42.6619 MB</td><td class="n">1×</td><td class="n">555.4M</td></tr>
+<tr class="key"><td>ResNet-18 ternary (C, D)</td><td class="n">11,173,962</td><td class="n">2.06</td><td class="n">2.7776 MB</td><td class="n">15.36× smaller</td><td class="n">555.4M (unchanged)</td></tr>
+<tr><td>ResNet-44 fp32 (E)</td><td class="n">658,586</td><td class="n">32</td><td class="n">2.5244 MB</td><td class="n">16.90× smaller</td><td class="n">97.2M</td></tr>
+<tr><td>ResNet-34 fp32 (T)</td><td class="n">21,282,122</td><td class="n">32</td><td class="n">81.2498 MB</td><td class="n">1.90× larger</td><td class="n">1,159.4M</td></tr>
 </table>
-<p class="tcap"><b>Table 5.</b> Model size. Exported storage uses a fixed-width convention: 2 bits per ternary
+<p class="tcap"><b>Table 5.</b> Model size. MACs are multiply-accumulate operations for one 32×32 image. Bits per parameter counts 2-bit ternary weights, per-filter scales and fp32 parameters, divided by the parameter count; BatchNorm running statistics are buffers, excluded from it but included in exported storage. Exported storage uses a fixed-width convention: 2 bits per ternary
 weight, one fp32 scale per output filter, fp32 stem and classifier, and all four BatchNorm tensors (γ, β, running
 mean, running variance) in fp32, with BatchNorm shipped separately rather than folded into convolutions.</p>
 
@@ -566,9 +596,18 @@ write, and no latency claim follows. TTQ state forward time under 30% of full pr
 memory claim, without kernel details; we do not inherit that claim. Checkpoints hold fp32 latent weights and are
 full size; compression describes the exported model only.</p>
 
-<p><span class="tbd">TBD after Phase 4: per-layer sparsity against TTQ's 30–50% band; arm E against arm D. If a
-full-precision network of nearly the same size performs as well as D, that is a substantive negative result about
-the whole pipeline and will be reported as one.</span></p>
+<p><b>Sparsity.</b> Weighted by layer size, ternary layers ended 47.1% zero in arm C and 48.2% in arm D, at the
+top edge of TTQ's 30–50% band. It is not uniform across depth. The four layers of the first stage are the sparsest,
+averaging 53.9% in C and 56.4% in D, and the first ternary layer reaches 60.4% and 63.5%; every later layer sits
+between 45% and 50%. Arm D ended slightly sparser than arm C in 17 of 19 layers. With three seeds per arm and B and D
+ruled uninterpretable as distillation, we do not attribute that to the teacher. Per-layer values are in Appendix
+B.</p>
+
+<p><b>Was ternarization needed?</b> Arm E answers this. ResNet-44, the full-precision network nearest the ternary
+student's exported size, reached 90.15%: 3.81 points below arm D and 3.37 below arm C. That gap is nearly four times
+the largest within-arm spread. Arm E has one seed, so this is a threshold judgement rather than an effect size, but it
+is the one comparison in the study the rules resolve. At about 2.5 to 2.8 MB, a ternary ResNet-18 is a far better use
+of the storage than a smaller full-precision network.</p>
 
 <h2>7. Ablation: distillation temperature</h2>
 
@@ -601,11 +640,24 @@ comparable across temperatures; the comparison uses test accuracy only.</p>
 <img src="figures/fig7_temperature_sweep.png" alt="Temperature sweep">
 <figcaption><b>Figure 7.</b> Arm D's last-10 test accuracy against distillation temperature. Dots are individual seeds;
 vertical bars span them. The horizontal line and band show arm C, trained without a teacher.
-<span class="tbd">TBD: what to conclude.</span></figcaption>
+Accuracy rises with temperature across the three points. Only the <i>T</i> = 8 point lies entirely above arm C's range.</figcaption>
 </figure>
 
-<p><span class="tbd">TBD after the sweep: the three means, their spreads, and the verdict aggregate.py returned
-(monotone, exceeding spread, or flat).</span></p>
+<p><b>Result.</b> Mean test accuracy rose with temperature:
+93.56% at <i>T</i> = 2, 93.85% at <i>T</i> = 4 and 94.10% at <i>T</i> = 8, with across-seed spreads of 0.43, 0.16
+and 0.09 points. The pre-committed rule classifies this as a monotone increasing trend. Each adjacent step, 0.29 and
+0.25 points, is smaller than the largest spread in the sweep, while the 0.54-point difference between the end points
+exceeds every spread in it. With two seeds per point this locates a direction, not an optimum, and it does not show
+where accuracy stops rising. <i>T</i> = 8 outperformed the pre-registered <i>T</i> = 4, so it is reported as an
+unexploited finding and changes no headline number.</p>
+
+<p>The direction runs against the hypothesis. A constrained student was predicted to do best at an intermediate
+temperature; within this grid the ternary student did best at the highest. Two cautions apply. First, the teacher
+rule applies to arm D here as well: a teacher no more accurate than the student cannot transfer capability it does
+not have, so the benefit of softer targets is at least as consistent with their acting as a regulariser, the role
+label smoothing plays, as with knowledge transfer. We ran no label-smoothing control, so we cannot separate the two.
+Second, higher temperatures also raised late-training oscillation: final-phase reversal rates were 0.029% at
+<i>T</i> = 2, 0.052% at <i>T</i> = 4 and 0.080% at <i>T</i> = 8.</p>
 
 <h2>8. Discussion and limitations</h2>
 
@@ -615,8 +667,7 @@ kernels do not exploit. Our result is therefore a storage result. We make no lat
 would need kernels that operate on packed ternary weights.</p>
 
 <p><b>The ternary constraint affects early and late layers differently.</b> We kept the stem and classifier in full
-precision at a cost of 6,858 parameters. <span class="tbd">TBD: whether our per-layer sparsity reproduces TTQ's finding
-that the first quantized layer and the last layers move in opposite directions during training.</span> The classifier
+precision at a cost of 6,858 parameters. At the end of training the first ternary stage was the sparsest part of the network, above 50%, with later stages at 45–50% (section 6.3). During training, early and late layers moved in the same direction at different rates: both gained sparsity, the first ternary layer by 15.7 points and the last by 2.1 (section 5.4). That does not reproduce TTQ's observation that the first quantized layer loses sparsity. The classifier
 choice also interacts with distillation. A ternary classifier computes a ±α-weighted sum over 512 features and can express
 only coarse differences between logits, so it cannot represent finely softened targets; the usable temperature and the
 classifier's precision should be chosen together.</p>
@@ -649,8 +700,7 @@ control.</p>
 <h2>9. Conclusion</h2>
 
 <p>A ResNet-18 with 99.85% of its weights ternary exports at 2.78 MB, 15.36× smaller than its full-precision
-counterpart, with multiply-accumulate count unchanged. <span class="tbd">TBD after Phase 4 and the sweep: the accuracy
-findings, stated no more strongly than the pre-committed rules allow.</span></p>
+counterpart, with multiply-accumulate count unchanged. The ternary students' accuracy, 93.52% and 93.96%, was not distinguishable from the full-precision network's 93.92%. The ResNet-34 teacher reached only 93.74%, below the student it was meant to teach, so the pre-registered rules leave the distillation question unanswered by this study rather than answered either way. The resolved finding is about storage: a full-precision network of nearly the same exported size, ResNet-44, was 3.8 points less accurate than the ternary student. In the temperature ablation the ternary student's accuracy rose monotonically from <i>T</i> = 2 to <i>T</i> = 8, the opposite of the intermediate optimum a width-based analogy predicts; with a teacher no stronger than the student, that trend is as consistent with regularisation as with knowledge transfer.</p>
 
 <h2>References</h2>
 <ol class="refs">
@@ -690,8 +740,7 @@ amendment and retaining run A_0 rather than re-running it.</p>
 <pre class="appendix"><!--PREREGISTRATION--></pre>
 
 <h2>Appendix B. Per-layer statistics</h2>
-<p><span class="tbd">TBD after Phase 4: for each of the 19 ternary layers, weight count, last-10 mean zero fraction, final
-reversal rate, and degenerate-filter counts, from aggregate.py's per-layer tables.</span></p>
+<table style="font-size:7.4pt"><tr><th class="n">#</th><th>Layer</th><th class="n">Weights</th><th class="n">Zero % start (C)</th><th class="n">Zero % end (C)</th><th class="n">Zero % end (D)</th><th class="n">Reversal %, lr 0.1 (C)</th><th class="n">Reversal %, lr 0.1 (D)</th><th class="n">Reversal %, final (C)</th><th class="n">Reversal %, final (D)</th><th class="n">Degenerate (max)</th></tr><tr><td class="n">1</td><td><code>layer1.0.conv1</code></td><td class="n">36,864</td><td class="n">44.7</td><td class="n">60.4</td><td class="n">63.5</td><td class="n">5.16</td><td class="n">4.26</td><td class="n">0.036</td><td class="n">0.061</td><td class="n">0</td></tr><tr><td class="n">2</td><td><code>layer1.0.conv2</code></td><td class="n">36,864</td><td class="n">44.9</td><td class="n">51.2</td><td class="n">54.1</td><td class="n">6.81</td><td class="n">6.59</td><td class="n">0.037</td><td class="n">0.068</td><td class="n">0</td></tr><tr><td class="n">3</td><td><code>layer1.1.conv1</code></td><td class="n">36,864</td><td class="n">44.9</td><td class="n">53.7</td><td class="n">56.2</td><td class="n">6.48</td><td class="n">6.66</td><td class="n">0.038</td><td class="n">0.076</td><td class="n">0</td></tr><tr><td class="n">4</td><td><code>layer1.1.conv2</code></td><td class="n">36,864</td><td class="n">44.8</td><td class="n">50.5</td><td class="n">51.9</td><td class="n">7.10</td><td class="n">7.33</td><td class="n">0.041</td><td class="n">0.065</td><td class="n">0</td></tr><tr><td class="n">5</td><td><code>layer2.0.conv1</code></td><td class="n">73,728</td><td class="n">45.0</td><td class="n">49.7</td><td class="n">49.3</td><td class="n">8.19</td><td class="n">8.59</td><td class="n">0.039</td><td class="n">0.065</td><td class="n">0</td></tr><tr><td class="n">6</td><td><code>layer2.0.conv2</code></td><td class="n">147,456</td><td class="n">45.0</td><td class="n">48.1</td><td class="n">47.8</td><td class="n">8.54</td><td class="n">8.94</td><td class="n">0.039</td><td class="n">0.058</td><td class="n">0</td></tr><tr><td class="n">7</td><td><code>layer2.0.downsample.0</code></td><td class="n">8,192</td><td class="n">44.9</td><td class="n">48.4</td><td class="n">48.7</td><td class="n">8.02</td><td class="n">8.70</td><td class="n">0.080</td><td class="n">0.245</td><td class="n">0</td></tr><tr><td class="n">8</td><td><code>layer2.1.conv1</code></td><td class="n">147,456</td><td class="n">45.0</td><td class="n">46.8</td><td class="n">47.6</td><td class="n">8.48</td><td class="n">9.30</td><td class="n">0.038</td><td class="n">0.053</td><td class="n">0</td></tr><tr><td class="n">9</td><td><code>layer2.1.conv2</code></td><td class="n">147,456</td><td class="n">45.0</td><td class="n">46.6</td><td class="n">47.9</td><td class="n">8.48</td><td class="n">9.06</td><td class="n">0.036</td><td class="n">0.050</td><td class="n">0</td></tr><tr><td class="n">10</td><td><code>layer3.0.conv1</code></td><td class="n">294,912</td><td class="n">45.0</td><td class="n">46.2</td><td class="n">46.6</td><td class="n">9.76</td><td class="n">10.50</td><td class="n">0.041</td><td class="n">0.051</td><td class="n">0</td></tr><tr><td class="n">11</td><td><code>layer3.0.conv2</code></td><td class="n">589,824</td><td class="n">45.0</td><td class="n">46.4</td><td class="n">46.9</td><td class="n">9.37</td><td class="n">10.25</td><td class="n">0.035</td><td class="n">0.049</td><td class="n">0</td></tr><tr><td class="n">12</td><td><code>layer3.0.downsample.0</code></td><td class="n">32,768</td><td class="n">45.1</td><td class="n">45.2</td><td class="n">46.0</td><td class="n">8.94</td><td class="n">9.84</td><td class="n">0.052</td><td class="n">0.080</td><td class="n">0</td></tr><tr><td class="n">13</td><td><code>layer3.1.conv1</code></td><td class="n">589,824</td><td class="n">45.1</td><td class="n">46.1</td><td class="n">46.8</td><td class="n">9.16</td><td class="n">10.28</td><td class="n">0.037</td><td class="n">0.050</td><td class="n">0</td></tr><tr><td class="n">14</td><td><code>layer3.1.conv2</code></td><td class="n">589,824</td><td class="n">45.1</td><td class="n">46.2</td><td class="n">47.1</td><td class="n">8.80</td><td class="n">9.74</td><td class="n">0.033</td><td class="n">0.043</td><td class="n">0</td></tr><tr><td class="n">15</td><td><code>layer4.0.conv1</code></td><td class="n">1,179,648</td><td class="n">45.1</td><td class="n">46.1</td><td class="n">46.5</td><td class="n">9.34</td><td class="n">11.10</td><td class="n">0.030</td><td class="n">0.043</td><td class="n">0</td></tr><tr><td class="n">16</td><td><code>layer4.0.conv2</code></td><td class="n">2,359,296</td><td class="n">45.0</td><td class="n">47.4</td><td class="n">48.3</td><td class="n">8.28</td><td class="n">9.88</td><td class="n">0.028</td><td class="n">0.045</td><td class="n">0</td></tr><tr><td class="n">17</td><td><code>layer4.0.downsample.0</code></td><td class="n">131,072</td><td class="n">45.1</td><td class="n">45.5</td><td class="n">46.7</td><td class="n">8.45</td><td class="n">9.57</td><td class="n">0.034</td><td class="n">0.073</td><td class="n">0</td></tr><tr><td class="n">18</td><td><code>layer4.1.conv1</code></td><td class="n">2,359,296</td><td class="n">45.0</td><td class="n">47.5</td><td class="n">49.3</td><td class="n">7.48</td><td class="n">8.72</td><td class="n">0.027</td><td class="n">0.058</td><td class="n">0</td></tr><tr><td class="n">19</td><td><code>layer4.1.conv2</code></td><td class="n">2,359,296</td><td class="n">45.1</td><td class="n">47.2</td><td class="n">48.7</td><td class="n">6.22</td><td class="n">7.07</td><td class="n">0.027</td><td class="n">0.059</td><td class="n">0</td></tr></table><p class="tcap"><b>Table B1.</b> Per-layer statistics for the 19 ternary layers, averaged over seeds. Zero % start is epoch 1; zero % end is the mean over epochs 151–160. Reversal rates are per epoch, averaged over epochs 3–79 (learning rate 0.1) and over epochs 151–160 (final). Degenerate-filter counts were zero at every epoch in every ternary run.</p>
 
 </body>
 </html>

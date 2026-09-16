@@ -344,8 +344,8 @@ def fig6_zero_fraction(groups):
     names = []
     for i, arm in enumerate(arms):
         axes[i].axhspan(0.30, 0.50, color="#f1f0ea", zorder=0)
-        axes[i].text(3, 0.49, "TTQ's lowest-error band, 30–50%", fontsize=6.5, color=MUTED,
-                     va="top")
+        axes[i].text(158, 0.305, "TTQ's lowest-error band, 30–50%", fontsize=6.5, color=MUTED,
+                     va="bottom", ha="right")
         names, _ = per_layer_panel(axes[i], groups[arm], "zero_fraction",
                                    f"({'ab'[i]}) zero fraction per layer, arm {arm}")
     axes[0].set_ylabel("fraction of weights quantized to 0")
