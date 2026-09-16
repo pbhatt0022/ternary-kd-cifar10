@@ -258,8 +258,13 @@ def sweep_summary(results):
     return points, verdict
 
 
-def per_layer_reversal_curves(records):
-    """(label, layer, epoch, reversal_rate) rows. Null epochs are skipped, not zero-filled."""
+def per_layer_curves(records, field):
+    """(label, layer, epoch, value) rows for a per-layer field.
+
+    Null values are skipped rather than zero-filled: the reversal rate is genuinely
+    undefined for epochs 1 and 2, and a 0.0 there would be indistinguishable from a stable
+    epoch.
+    """
     rows = []
     for record in records:
         for line in record["metrics_path"].read_text(encoding="utf-8").splitlines():
@@ -267,9 +272,9 @@ def per_layer_reversal_curves(records):
                 continue
             entry = json.loads(line)
             for name, values in entry.get("per_layer", {}).items():
-                rate = values.get("reversal_rate")
-                if rate is not None:
-                    rows.append((record["label"], name, entry["epoch"], rate))
+                value = values.get(field)
+                if value is not None:
+                    rows.append((record["label"], name, entry["epoch"], value))
     return rows
 
 
@@ -416,15 +421,19 @@ def write_curve_data(out_dir, results):
             path.write_text("\n".join(rows) + "\n", encoding="utf-8")
             written.append(path)
 
-    # Per-layer reversal curves, which section 7 requires alongside the aggregate series.
-    rows = ["label,layer,epoch,reversal_rate"]
-    for group, records in sorted(results.items()):
-        for label, layer, epoch, rate in per_layer_reversal_curves(records):
-            rows.append(f"{label},{layer},{epoch},{rate}")
-    if len(rows) > 1:
-        path = out_dir / "reversal_curves_per_layer.csv"
-        path.write_text("\n".join(rows) + "\n", encoding="utf-8")
-        written.append(path)
+    # Per-layer series: reversal rate (section 7 wants these alongside the aggregate) and
+    # zero fraction per epoch, which the sparsity-evolution figure needs.
+    for field, name in (("reversal_rate", "reversal_curves_per_layer.csv"),
+                        ("zero_fraction", "zero_fraction_curves.csv"),
+                        ("degenerate_filter_count", "degenerate_curves.csv")):
+        rows = [f"label,layer,epoch,{field}"]
+        for group, records in sorted(results.items()):
+            for label, layer, epoch, value in per_layer_curves(records, field):
+                rows.append(f"{label},{layer},{epoch},{value}")
+        if len(rows) > 1:
+            path = out_dir / name
+            path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+            written.append(path)
 
     return written
 
