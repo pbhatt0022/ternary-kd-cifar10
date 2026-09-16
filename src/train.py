@@ -6,6 +6,7 @@ checkpoint selection.
 """
 
 import json
+import os
 import pathlib
 import platform
 import random
@@ -172,6 +173,19 @@ def _restore_rng(state):
         torch.cuda.set_rng_state_all(
             [s.cpu().to(torch.uint8) for s in state["cuda"]]
         )
+
+
+def _save_atomic(obj, path):
+    """torch.save via a temp file plus an atomic rename.
+
+    resume.pt is rewritten at the end of every epoch, and Colab runtimes are killed
+    routinely -- including mid-write. A truncated resume.pt would make the run unloadable
+    and count as a corrupted checkpoint under the discard rule, so the real file is only
+    ever replaced once it is completely written.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    torch.save(obj, tmp)
+    os.replace(tmp, path)
 
 
 def _restore_loader_position(train_loader, seed, state):
@@ -379,12 +393,12 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
             handle.write(json.dumps(record) + "\n")
 
         if epoch in CHECKPOINT_EPOCHS:
-            torch.save(
+            _save_atomic(
                 {"model": model.state_dict(), "epoch": epoch},
                 ckpt_dir / f"epoch_{epoch}.pt",
             )
 
-        torch.save(
+        _save_atomic(
             {
                 "model": model.state_dict(),
                 "optimizer": optimizer.state_dict(),
