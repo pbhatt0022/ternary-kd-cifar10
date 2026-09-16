@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from src.data import SPLIT_SEED, train_val_loaders
 from src.losses import LAMBDA, T_DEFAULT, kd_loss
 from src.metrics_io import read_metrics
+from src import runlock
 from src.models import EXPECTED_TERNARY_CONVS, resnet6n2, resnet18_cifar, resnet34_cifar
 from src.ternary_modules import TernaryConv2d, ternarize_model
 from src.tracking import TernaryTracker
@@ -228,7 +229,21 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
 
     `max_epochs` shortens the run and exists only for the determinism check in
     scripts/verify.py. Every reported run uses the pre-registered EPOCHS.
+
+    Holds a heartbeat lock on the run directory for its whole duration, so a second notebook
+    pointed at the same run refuses to start rather than corrupting it.
     """
+    label = label or f"{arm}_{seed}"
+    run_dir = pathlib.Path(runs_dir) / label
+    run_dir.mkdir(parents=True, exist_ok=True)
+    runlock.acquire(run_dir, label)  # raises before touching anything if the run is live
+    try:
+        return _run(arm, seed, runs_dir, data_dir, temperature, label, device, max_epochs)
+    finally:
+        runlock.release(run_dir)
+
+
+def _run(arm, seed, runs_dir, data_dir, temperature, label, device, max_epochs):
     spec = ARM_SPEC[arm]
     total_epochs = max_epochs or EPOCHS
     label = label or f"{arm}_{seed}"
@@ -401,6 +416,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
             },
             resume_path,
         )
+        runlock.heartbeat(run_dir, label)
 
         if epoch == start_epoch:
             seconds = record["epoch_wall_time"]

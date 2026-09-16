@@ -280,6 +280,34 @@ def phase5(args):
             return 1
         temperatures = (args.sweep_temperature,)
 
+    # --sweep-seed narrows further, to one run per notebook, for a four-way split.
+    if args.sweep_seed is not None:
+        if args.sweep_temperature is None:
+            print("HALT: --sweep-seed also needs --sweep-temperature.")
+            return 1
+        if args.sweep_seed not in SWEEP_SEEDS:
+            print(f"HALT: seed {args.sweep_seed} is not a pre-registered sweep seed "
+                  f"{SWEEP_SEEDS}. Replacement seeds are drawn only by running Phase 5 "
+                  "without --sweep-seed, so the sequence stays strictly ordered.")
+            return 1
+        temperature = args.sweep_temperature
+        label = f"D_T{int(temperature)}_{args.sweep_seed}"
+        status = status_of(args.runs_dir, label)
+        if status is None:
+            status = train.run("D", args.sweep_seed, args.runs_dir, args.data_dir,
+                               temperature=temperature, label=label)["discard_status"]
+        else:
+            print(f"{label} already finished ({status})")
+        print(f"{label}: {status}")
+        if status != "completed":
+            # A single-run notebook cannot draw a replacement without risking a collision
+            # with the notebook running the other seed at this temperature.
+            print(f"{label} was {status}. Section 10 requires the next seed in sequence: "
+                  f"once the other seed at T={temperature:g} has finished, run Phase 5 with "
+                  f"--sweep-temperature {temperature:g} and no --sweep-seed to draw it.")
+            return 1
+        return 0
+
     summary = {}
     for temperature in temperatures:
         prefix = f"D_T{int(temperature)}"
@@ -320,6 +348,9 @@ def main():
     parser.add_argument("--sweep-temperature", type=float, default=None,
                         help="Phase 5 only: run just this pre-registered temperature, so two "
                              "GPU notebooks can split the sweep")
+    parser.add_argument("--sweep-seed", type=int, default=None,
+                        help="Phase 5 only, with --sweep-temperature: run just this one "
+                             "sweep run, so four GPU notebooks can each take one")
     args = parser.parse_args()
 
     pathlib.Path(args.runs_dir).mkdir(parents=True, exist_ok=True)
