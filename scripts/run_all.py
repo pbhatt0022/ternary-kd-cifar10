@@ -18,6 +18,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src import train
+from src.metrics_io import val_accuracies as metrics_val_accuracies
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
@@ -42,12 +43,7 @@ def status_of(runs_dir, label):
 
 def val_accuracies(runs_dir, label, epochs):
     path = pathlib.Path(runs_dir) / label / "metrics.jsonl"
-    records = {
-        json.loads(l)["epoch"]: json.loads(l)["val_accuracy"]
-        for l in path.read_text(encoding="utf-8").splitlines()
-        if l.strip()
-    }
-    return [records[e] for e in epochs if e in records]
+    return metrics_val_accuracies(path, epochs)
 
 
 def _code_fingerprint():

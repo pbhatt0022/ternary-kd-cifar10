@@ -11,6 +11,7 @@ import pathlib
 import torch
 
 from src.data import test_loader
+from src.metrics_io import val_accuracies as metrics_val_accuracies
 from src.train import BATCH_SIZE, CHECKPOINT_EPOCHS, accuracy, build_model, set_determinism
 
 SETTLEDNESS_THRESHOLD = 0.5  # percentage points, a declared round number
@@ -18,12 +19,7 @@ SETTLEDNESS_THRESHOLD = 0.5  # percentage points, a declared round number
 
 def _val_spread(metrics_path, epochs):
     """max - min of validation accuracy over `epochs`, in percentage points."""
-    records = {}
-    for line in metrics_path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            record = json.loads(line)
-            records[record["epoch"]] = record["val_accuracy"]
-    values = [records[e] for e in epochs if e in records]
+    values = metrics_val_accuracies(metrics_path, epochs)
     if len(values) != len(list(epochs)):
         raise ValueError(
             f"{metrics_path}: found {len(values)} of {len(list(epochs))} final-window epochs"

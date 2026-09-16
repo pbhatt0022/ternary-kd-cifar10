@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from src import storage
+from src.metrics_io import read_metrics
 from src.train import ARM_SPEC, CHECKPOINT_EPOCHS, build_model
 
 HEADLINE_ORDER = ("T", "A", "B", "C", "D", "E")
@@ -160,10 +161,7 @@ def per_layer_table(records):
     window = set(CHECKPOINT_EPOCHS)
     layers = {}
     for record in records:
-        for line in record["metrics_path"].read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            entry = json.loads(line)
+        for entry in read_metrics(record["metrics_path"]):
             for name, values in entry.get("per_layer", {}).items():
                 store = layers.setdefault(
                     name, {"zero": [], "degen_window": [], "degen_all": [],
@@ -198,10 +196,7 @@ def curves(records, key):
     series = []
     for record in records:
         points = []
-        for line in record["metrics_path"].read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            entry = json.loads(line)
+        for entry in read_metrics(record["metrics_path"]):
             value = entry.get(key)
             if value is not None:  # reversal rate is null for epochs 1 and 2
                 points.append((entry["epoch"], value))
@@ -267,10 +262,7 @@ def per_layer_curves(records, field):
     """
     rows = []
     for record in records:
-        for line in record["metrics_path"].read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            entry = json.loads(line)
+        for entry in read_metrics(record["metrics_path"]):
             for name, values in entry.get("per_layer", {}).items():
                 value = values.get(field)
                 if value is not None:

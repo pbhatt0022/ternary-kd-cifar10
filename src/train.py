@@ -20,6 +20,7 @@ import torch.nn.functional as F
 
 from src.data import SPLIT_SEED, train_val_loaders
 from src.losses import LAMBDA, T_DEFAULT, kd_loss
+from src.metrics_io import read_metrics
 from src.models import EXPECTED_TERNARY_CONVS, resnet6n2, resnet18_cifar, resnet34_cifar
 from src.ternary_modules import TernaryConv2d, ternarize_model
 from src.tracking import TernaryTracker
@@ -209,19 +210,6 @@ def _restore_loader_position(train_loader, seed, state):
         torch.randperm(len(train_loader.dataset), generator=generator)
 
 
-def _truncate_metrics(path, last_epoch):
-    """Drop metrics lines past the resume point, so a crash between appending a line and
-    writing resume.pt cannot duplicate an epoch."""
-    if not path.exists():
-        return
-    kept = [
-        line
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip() and json.loads(line)["epoch"] <= last_epoch
-    ]
-    path.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
-
-
 def is_complete(runs_dir, label):
     """True if this run already reached epoch 160 and wrote its manifest verdict."""
     manifest_path = pathlib.Path(runs_dir) / label / "manifest.json"
@@ -314,7 +302,10 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
         _restore_loader_position(train_loader, seed, state)
         start_epoch = state["epoch"] + 1
         epoch1_loss = state["epoch1_loss"]
-        _truncate_metrics(metrics_path, state["epoch"])
+        # metrics.jsonl is NOT rewritten here. An earlier version truncated it to the
+        # resume point; Drive served a stale copy to that read-modify-write and the rewrite
+        # destroyed three epochs of a run. Writers append only, and read_metrics keeps the
+        # last record per epoch, which is equivalent and cannot lose data.
 
         # Carry forward what the original session recorded rather than overwriting it:
         # the run started when it started, and the GPU history has to accumulate.
@@ -424,7 +415,7 @@ def run(arm, seed, runs_dir, data_dir, temperature=T_DEFAULT, label=None, device
 
     # Discard criterion 2: the run did not learn at all over its whole length. Only
     # meaningful for a full-length run; a 2-epoch verification run is not judged by it.
-    last_record = json.loads(metrics_path.read_text(encoding="utf-8").splitlines()[-1])
+    last_record = read_metrics(metrics_path)[-1]
     if total_epochs == EPOCHS and last_record["train_loss_mean"] > epoch1_loss:
         manifest["discard_status"] = "discarded:loss_did_not_decrease"
         print(

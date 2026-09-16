@@ -23,6 +23,7 @@ import torch
 
 from src import train
 from src.data import split_indices
+from src.metrics_io import read_metrics
 from src.models import EXPECTED_TERNARY_CONVS, resnet18_cifar, resnet34_cifar
 from src.ternary_modules import TernaryConv2d, ternarize_model
 
@@ -120,8 +121,7 @@ def _data_hygiene():
 
 
 def _records(metrics_path):
-    lines = metrics_path.read_text(encoding="utf-8").splitlines()
-    return [json.loads(l) for l in lines if l.strip()]
+    return read_metrics(metrics_path)
 
 
 def _short_run(seed, scratch, data_dir):
@@ -204,11 +204,7 @@ def check_restore_reproduce(runs_dir, data_dir):
     if not metrics_path.exists():
         return f"no metrics at {metrics_path}; train arm T first"
 
-    logged = {
-        json.loads(l)["epoch"]: json.loads(l)["val_accuracy"]
-        for l in metrics_path.read_text(encoding="utf-8").splitlines()
-        if l.strip()
-    }
+    logged = {r["epoch"]: r["val_accuracy"] for r in read_metrics(metrics_path)}
     checkpoints = sorted((run_dir / "checkpoints").glob("epoch_*.pt"))
     if not checkpoints:
         return "no checkpoints found for the teacher run"
