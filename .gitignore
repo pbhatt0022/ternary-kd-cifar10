@@ -9,3 +9,5 @@ report/*.pdf
 report/*.aux
 report/*.log
 report/*.out
+report/_build.html
+report/build/

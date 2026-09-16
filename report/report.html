@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ternary ResNet-18 with Knowledge Distillation on CIFAR-10</title>
+<style>
+  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
+  :root { --ink:#1f1f1e; --muted:#5d5c56; --rule:#d9d8d0; --tint:#f4f3ee; --accent:#2a78d6; }
+  html { font-size: 10.2pt; }
+  body { font-family: Cambria, Georgia, "Times New Roman", serif; font-variant-numeric: lining-nums; color: var(--ink); line-height: 1.42;
+         margin: 0; background: #fff; }
+  h1 { font-size: 17pt; line-height: 1.2; margin: 0 0 4pt; }
+  h2 { font-size: 12.5pt; margin: 16pt 0 5pt; border-bottom: 0.6pt solid var(--rule);
+       padding-bottom: 2pt; break-after: avoid; }
+  h3 { font-size: 10.8pt; margin: 11pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 6pt; text-align: justify; hyphens: auto; }
+  .meta { color: var(--muted); font-size: 9.5pt; margin-bottom: 10pt; }
+  .abstract { background: var(--tint); padding: 8pt 11pt; margin: 8pt 0 12pt; font-size: 9.6pt; }
+  .abstract p { margin: 0; }
+  figure { margin: 8pt 0 10pt; break-inside: avoid; text-align: center; }
+  figure img { width: 100%; }
+  figure.narrow img { width: 62%; }
+  figcaption { font-size: 8.8pt; color: var(--muted); text-align: justify; margin-top: 3pt; }
+  figcaption b { color: var(--ink); }
+  table { border-collapse: collapse; width: 100%; font-size: 8.9pt; margin: 5pt 0 3pt;
+          break-inside: avoid; font-family: "Segoe UI", Arial, sans-serif; }
+  th, td { padding: 2.6pt 5pt; border-bottom: 0.5pt solid var(--rule); text-align: left;
+           vertical-align: top; }
+  th { border-bottom: 0.9pt solid var(--ink); font-weight: 600; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.key td { background: #eaf1fb; }
+  .arms td:nth-child(-n+5), .arms th:nth-child(-n+5) { white-space: nowrap; }
+  .tcap { font-size: 8.8pt; color: var(--muted); margin: 0 0 10pt; text-align: justify; }
+  .tcap b { color: var(--ink); }
+  .eq { text-align: center; margin: 6pt 0 8pt; font-size: 10.6pt; }
+  .tbd { background: #fff1b8; color: #6b4e00; padding: 0 2pt; border-radius: 2pt;
+         font-family: "Segoe UI", Arial, sans-serif; font-size: 8.6pt; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 8.8pt; background: var(--tint);
+         padding: 0 2pt; }
+  ul, ol { margin: 0 0 6pt 16pt; padding: 0; }
+  li { margin-bottom: 2.5pt; text-align: justify; }
+  .refs li { font-size: 9pt; }
+  .pagebreak { break-before: page; }
+  pre.appendix { white-space: pre-wrap; font-family: Consolas, "Courier New", monospace;
+                 font-size: 7.4pt; line-height: 1.32; background: var(--tint); padding: 8pt; }
+</style>
+</head>
+<body>
+
+<h1>Ternary-Weight ResNet-18 Distilled from a Full-Precision ResNet-34 on CIFAR-10: A Pre-registered Study</h1>
+<div class="meta">Priyanka Bhatt · Advanced Topics in Deep Learning, Assignment I · September 2026 ·
+Code: <a href="https://github.com/pbhatt0022/ternary-kd-cifar10">github.com/pbhatt0022/ternary-kd-cifar10</a></div>
+
+<div class="abstract"><p><b>Abstract.</b> We constrain 99.85% of a CIFAR-adapted ResNet-18's weights to
+{−α, 0, +α} using closed-form per-filter scaling and a straight-through estimator, and train it with
+and without knowledge distillation from a full-precision ResNet-34. The exported student occupies
+2.78 MB against 42.66 MB for the full-precision network, a 15.36× reduction at 2.09 bits per weight.
+Five arms separate the effect of ternarization from the effect of distillation, including a
+full-precision distillation control and a nearest-storage full-precision network. The design, the
+reporting metric and every rule for interpreting the results were fixed in a pre-registration before
+any training. <span class="tbd">TBD after Phase 4: one sentence each on accuracy of T, A and D, and
+the verdicts the pre-committed rules returned.</span></p></div>
+
+<h2>1. Introduction</h2>
+
+<p>Weight quantization reduces the storage a network needs. Ternary quantization restricts each weight
+to three values, so a weight can be stored in two bits instead of thirty-two. Knowledge distillation
+trains a small network to match the softened output distribution of a larger one. Both are
+established, and they are often combined on the assumption that distillation recovers accuracy lost
+to quantization.</p>
+
+<p>This study tests that combination without assuming a loss exists. The claim under test, as fixed in
+section 1 of the pre-registration, is that we measure the accuracy effect of constraining ResNet-18's
+convolutional weights to {−α, 0, +α} on CIFAR-10, and the extent to which distillation from a
+full-precision ResNet-34 modifies that effect <i>in either direction</i>. Prior work reports ternary
+CIFAR ResNets matching or exceeding full precision [4], and ResNet-18 is heavily over-parameterised for
+this dataset, so a loss is not a safe premise.</p>
+
+<h3>1.1 Pre-registration and amendments</h3>
+
+<p>Every design choice, the primary metric, and the rules for interpreting results were written down
+and committed to version control before the first training run. The frozen document is Appendix A.
+We state this early because it is unusual for a course report and because it governs how every
+number that follows should be read: the interpretation rules in section 4.3 were not chosen after
+seeing results, and they can forbid claims as well as license them.</p>
+
+<p>The pre-registration carries an append-only amendment log, reproduced in Appendix A. Five entries
+were made, each dated and committed before the evaluation it could have influenced:</p>
+<ul>
+<li><b>A1</b> corrected a formula in the storage-matched control's selection rule that counted
+BatchNorm γ and β twice. It changed the printed storage figures by under 1% and did not change
+which architecture was selected.</li>
+<li><b>A2</b> corrected the implementation handoff, which specified 2<i>n</i> residual blocks per
+stage for the 6<i>n</i>+2 family. That yields 12<i>n</i>+2 layers. The error was caught because a
+computed parameter count did not match the 0.27M He et al. report for ResNet-20 [1].</li>
+<li><b>A3</b> added resumable checkpointing, because runs executed on a cloud platform that
+preempts sessions, and the discard rule would otherwise have discarded runs for reasons unrelated
+to the configuration under test.</li>
+<li><b>A4</b> fixed which teacher checkpoint feeds distillation (epoch 160), which the original
+document left unspecified.</li>
+<li><b>A5</b> recorded execution deviations found by auditing every run before the test set was
+read, including one run whose data order after a resume does not match its seed (section 5.6).</li>
+</ul>
+
+<h2>2. Ternary quantizer and student architecture</h2>
+
+<figure>
+<img src="figures/fig1_student_architecture.png" alt="Student architecture">
+<figcaption><b>Figure 1.</b> The student (details in section 2.5). A torchvision-style BasicBlock ResNet-18 adapted for
+32×32 inputs: a 3×3 stride-1 stem replaces the 7×7 stride-2 stem, and the initial max-pool is removed.
+All 19 convolutions after the stem are ternary, including the three 1×1 downsample convolutions in
+shortcut paths. The stem, the classifier and every BatchNorm stay in full precision.</figcaption>
+</figure>
+
+
+<h3>2.1 Formulation</h3>
+
+<p>Following Ternary Weight Networks (TWN) [3], each weight tensor <i>W</i> is approximated by
+<i>α</i><i>W̃</i> with <i>W̃</i> ∈ {−1, 0, +1}, chosen to minimise ‖<i>W</i> − <i>αW̃</i>‖². For a fixed
+threshold Δ the support is <i>I</i> = {<i>i</i> : |<i>W<sub>i</sub></i>| &gt; Δ}, and setting the
+derivative with respect to α to zero gives the optimal scale as the mean magnitude over that support.
+We apply this <b>per output filter</b>. For filter <i>k</i> with <i>n</i> weights, where <i>n</i> is the
+size of the filter and not of the layer:</p>
+
+<div class="eq">Δ<sub><i>k</i></sub> = (0.75 / <i>n</i>) · ‖<i>W<sub>k</sub></i>‖<sub>1</sub>
+&nbsp;&nbsp;&nbsp;
+<i>W̃<sub>i</sub></i> = sign(<i>W<sub>i</sub></i>) · 1[|<i>W<sub>i</sub></i>| &gt; Δ<sub><i>k</i></sub>]
+&nbsp;&nbsp;&nbsp;
+α<sub><i>k</i></sub> = (1 / |<i>I<sub>k</sub></i>|) Σ<sub><i>i</i>∈<i>I<sub>k</sub></i></sub> |<i>W<sub>i</sub></i>|</div>
+
+<p>Two discrepancies in the source were checked against the paper text. First, TWN's Eq. 6 is printed as
+an arg min, but substituting the optimal α yields a quantity that must be maximised; we implement the
+maximisation. Second, we implement arXiv version 3 (November 2022), whose Algorithm 1 is per-filter
+with constant 0.75. TTQ [4] cites the earlier version as layer-wise with constant 0.7. The quantizer
+is recomputed from the current latent weights on every forward pass, with no per-epoch caching.</p>
+
+<h3>2.2 Why a per-filter closed-form scale</h3>
+
+<p>We considered three alternatives. <b>Learned scales</b> as in TTQ [4] make α a trained parameter with
+separate positive and negative values. TTQ therefore cannot use an identity straight-through estimator:
+its backward pass scales gradients by α<sub>p</sub>, α<sub>n</sub> or 1 depending on region, which acts
+as an implicit, time-varying learning-rate multiplier and entangles the scale's learning rate with the
+latent weights'. The closed form keeps the backward pass a clean identity. <b>A per-layer scale</b>
+would be coarser than what TWN's Algorithm 1 specifies, and a per-filter scale costs nothing at
+inference because it folds into the following BatchNorm. <b>A fixed sparsity target</b> was tested by
+TTQ against a threshold and performed worse, because a threshold lets each layer find its own sparsity;
+we did not re-test this.</p>
+
+<p>A per-filter α also interacts with BatchNorm: α and the BatchNorm γ both scale an output channel, so
+jointly trained they would have a degenerate direction. Because our α is recomputed rather than
+trained, that degeneracy does not arise.</p>
+
+<h3>2.3 Degenerate filters</h3>
+
+<p>If no weight in a filter exceeded Δ, the filter would output zero, receive no useful gradient through
+the estimator, and shrink further under weight decay: an absorbing state. The implementation therefore
+forces the largest-magnitude weight into the support whenever the support is empty.</p>
+
+<p>That fallback turns out to be reachable only in one case. Because Δ<sub><i>k</i></sub> = 0.75 ·
+mean|<i>W<sub>k</sub></i>| and max|<i>W<sub>k</sub></i>| ≥ mean|<i>W<sub>k</sub></i>| &gt; 0.75 ·
+mean|<i>W<sub>k</sub></i>| whenever the filter is not identically zero, at least one weight always
+clears the threshold. The fallback can fire only on a filter that is exactly zero, which is precisely
+the absorbing state it exists to prevent, and its practical role is to stop α = 0/0 from producing
+NaN. We therefore expect, and log, degenerate-filter counts of zero. <span class="tbd">TBD: confirm
+counts from degenerate_curves.csv (expected: zero in every layer, every epoch, every run).</span></p>
+
+<h3>2.4 Latent weights and the straight-through estimator</h3>
+
+<figure>
+<img src="figures/fig2_ternary_block.png" alt="Ternary convolution block">
+<figcaption><b>Figure 2.</b> A ternary convolution. The optimizer updates full-precision latent
+weights <i>W</i>, which are clamped to [−1, 1] after each step. The forward pass uses only the ternary
+weights <i>W<sub>t</sub></i> computed from them. The backward pass (dashed) bypasses the quantizer: the
+gradient with respect to <i>W<sub>t</sub></i> is applied to <i>W</i> unchanged.</figcaption>
+</figure>
+
+<p>Discrete weights cannot accumulate small gradient updates: a step of 10<sup>−4</sup> never moves a
+weight from 0 to α. Training therefore keeps a real-valued master copy, the latent weights, which the
+optimizer updates, while every forward pass uses their quantization. The ternarization function has zero
+gradient almost everywhere, so backpropagation uses the straight-through estimator of Bengio et al. [5],
+which treats the quantizer as the identity in the backward pass. In code this is
+<code>w_ste = w + (w_t − w).detach()</code>: the forward value is <i>w<sub>t</sub></i>, and the gradient
+reaches <i>w</i> unchanged. A unit test asserts the latent gradient equals the upstream gradient
+element for element.</p>
+
+<p>Yin et al. [6] give a design criterion for estimators, matching the quantized function at its
+extremes, and show that an identity estimator can be repelled from good minima. Their analysis concerns a
+two-layer network with binarized <i>activations</i> and full-precision weights, so their convergence
+results do not transfer to weight quantization. We use their work as a design criterion, not as a
+guarantee.</p>
+
+<p>Latent weights are clamped to [−1, 1] after each optimizer step, with a plain identity estimator. We
+deliberately did not combine clamping with a clipped estimator. That applies saturation twice: a weight
+at the boundary receives zero gradient and cannot return, producing a growing population of permanently
+frozen weights that is easy to mistake for convergence.</p>
+
+<h3>2.5 Which layers stay full precision</h3>
+
+<table>
+<tr><th>Component</th><th>Precision</th><th class="n">Parameters</th><th class="n">Share</th></tr>
+<tr><td>19 convolutions after the stem</td><td>ternary, 4,736 per-filter scales</td><td class="n">11,157,504</td><td class="n">99.853%</td></tr>
+<tr><td>Stem convolution, 3×3, 3→64</td><td>fp32</td><td class="n">1,728</td><td class="n">0.015%</td></tr>
+<tr><td>Classifier, 512→10 with bias</td><td>fp32</td><td class="n">5,130</td><td class="n">0.046%</td></tr>
+<tr><td>BatchNorm γ and β</td><td>fp32</td><td class="n">9,600</td><td class="n">0.086%</td></tr>
+<tr><td><b>Total</b></td><td></td><td class="n"><b>11,173,962</b></td><td class="n">100%</td></tr>
+</table>
+<p class="tcap"><b>Table 1.</b> Precision by component. BatchNorm running means and variances (9,600
+further values) are buffers rather than parameters; they stay fp32 and are counted in exported storage.</p>
+
+<p>The assignment brief describes constraining convolutional and fully-connected weights. We keep the stem
+and the classifier in full precision and document that choice here, as the rubric asks. The reference
+papers disagree on it: TTQ keeps the first and last layers full precision on ImageNet but ternarizes the
+classifier on CIFAR, and TWN states no exception. Together these two layers are 0.06% of the parameters.
+The stem sees raw pixels through only three input channels, so its 27-weight filters have the least
+redundancy of any layer. The classifier directly produces the logits that distillation softens; section 8
+discusses why its precision and the usable temperature are coupled.</p>
+
+<p>ResNet-18 is the ImageNet architecture of He et al. [1]. The CIFAR adaptation above is standard practice
+and does not come from that paper, whose own CIFAR networks are the narrower 6<i>n</i>+2 family used for
+arm E. Convolutions use Kaiming-normal initialisation (fan-out); every BatchNorm starts at γ = 1, β = 0.
+We did not zero-initialise the last BatchNorm γ in each residual block, a later technique absent from the
+cited configurations whose effect could differ between full-precision and ternary arms.</p>
+
+<h2>3. Knowledge distillation</h2>
+
+<h3>3.1 The loss</h3>
+
+<div class="eq"><i>L</i> = (1 − λ) · CE(<i>z<sub>s</sub></i>, <i>y</i>) + λ · <i>T</i>² ·
+KL( softmax(<i>z<sub>t</sub></i>/<i>T</i>) ‖ softmax(<i>z<sub>s</sub></i>/<i>T</i>) ),
+&nbsp;&nbsp;&nbsp; λ = 0.9, <i>T</i> = 4</div>
+
+<p>Here <i>z<sub>s</sub></i> and <i>z<sub>t</sub></i> are student and teacher logits. The gradient of the
+softened term scales as 1/<i>T</i>², so Hinton et al. [2] multiply by <i>T</i>² to keep the relative
+contribution of soft and hard targets roughly constant as <i>T</i> changes. The factor sits inside the soft
+term, before λ, so λ means the same thing at every temperature; the effective soft-to-hard gradient ratio is
+λ/(1−λ) = 9:1. A unit test confirms the soft-term gradient magnitude is far closer to constant across
+temperatures than the 16× gap a misplaced factor would produce.</p>
+
+<p>Our parameterisation is the convex form (1−λ, λ). Hinton et al.'s speech experiments used a relative
+weight of 0.5 on the hard-target cross-entropy against an unscaled soft term, a 2:1 ratio in a different
+parameterisation. λ = 0.9 is the later-standard convention and is not Hinton's own value; it was not
+tuned. Two implementation details matter numerically. The KL term uses <code>reduction='batchmean'</code>:
+<code>'mean'</code> would also divide by the ten classes and silently shrink the soft term tenfold. And KL
+divergence and soft cross-entropy differ by a teacher-only entropy term, which leaves gradients unchanged
+but shifts logged loss values, so distillation losses are not comparable with plain cross-entropy losses
+(Figure 4).</p>
+
+<h3>3.2 Teacher freezing</h3>
+
+<figure>
+<img src="figures/fig3_kd_setup.png" alt="Distillation setup">
+<figcaption><b>Figure 3.</b> Distillation. The same augmented batch feeds both networks. The teacher is the
+epoch-160 checkpoint of the ResNet-34 run, held in <code>eval()</code> mode under <code>no_grad()</code>
+with every parameter's <code>requires_grad</code> set to false, so no gradient reaches it.</figcaption>
+</figure>
+
+<p>Teacher logits are computed online, per batch, on exactly the inputs the student sees. Precomputing
+them would be cheaper but wrong here: augmentation is stochastic, so cached logits would describe different
+crops and flips from those the student receives. The teacher runs in evaluation mode because BatchNorm in
+training mode normalises with batch statistics, which would make the soft targets depend on which images
+happen to share a batch. The teacher is the final (epoch 160) checkpoint (amendment A4): averaging its ten
+final checkpoints' weights would be weight averaging, and choosing among them by validation accuracy would
+be checkpoint selection, both excluded by design.</p>
+
+<h3>3.3 Why T and λ were fixed rather than tuned</h3>
+
+<p>We fixed <i>T</i> and λ a priori at conventional values so that the distillation arms were not tuned
+against controls that were not. Tuning the temperature for the KD arms while the cross-entropy arms had no
+equivalent knob would compare a tuned treatment with untuned controls and inflate any apparent benefit of
+distillation. Instead the temperature is examined separately as an ablation (section 7), run after every
+headline number was recorded, so it could not revise them. This choice biases against arm D: if
+<i>T</i> = 4 is not optimal for a ternary student, D is reported below its potential. We accept a bias that
+runs against our own claim. λ was not varied at all; section 8 records that as a limitation.</p>
+
+<h2>4. Experimental design</h2>
+
+<h3>4.1 Arms</h3>
+
+<table class="arms">
+<tr><th>Arm</th><th>Network</th><th>Weights</th><th>Loss</th><th class="n">Seeds</th><th>Rules out</th></tr>
+<tr class="key"><td>T</td><td>ResNet-34</td><td>fp32</td><td>CE</td><td class="n">1</td><td>that a weak student result reflects a weak teacher</td></tr>
+<tr class="key"><td>A</td><td>ResNet-18</td><td>fp32</td><td>CE</td><td class="n">3</td><td>defines full-precision accuracy for this exact architecture, split, augmentation and schedule</td></tr>
+<tr><td>B</td><td>ResNet-18</td><td>fp32</td><td>CE + KD</td><td class="n">2</td><td>that any KD benefit is generic rather than specific to ternary students</td></tr>
+<tr><td>C</td><td>ResNet-18</td><td>ternary</td><td>CE</td><td class="n">3</td><td>that distillation did the work; A − C isolates ternarization under identical supervision</td></tr>
+<tr class="key"><td>D</td><td>ResNet-18</td><td>ternary</td><td>CE + KD</td><td class="n">3</td><td>the ternary distilled student</td></tr>
+<tr><td>E</td><td>ResNet-44</td><td>fp32</td><td>CE</td><td class="n">1</td><td>that a smaller full-precision network would have done as well</td></tr>
+</table>
+<p class="tcap"><b>Table 2.</b> Experimental arms. Highlighted rows are the comparison the assignment names:
+teacher, full-precision ResNet-18 baseline, and ternary distilled student.</p>
+
+<p>Arm B is what makes a distillation benefit attributable. Distillation helps most networks, so a gain from
+C to D does not by itself show anything specific to ternary students; only the interaction
+(D − C) − (B − A) does. Arm E asks whether ternarization was needed at all. It is the member of He et al.'s
+6<i>n</i>+2 family [1] whose full-precision exported storage is nearest the ternary ResNet-18's: ResNet-44,
+with 658,586 parameters and 2.5244 MB against a 2.7776 MB target. It is the nearest-storage network rather
+than an exact match, 9.1% below the target; the next candidate, ResNet-56, is 17.7% above. The selection was
+computed from architecture alone and committed before training.</p>
+
+<p>Four controls were considered and not run. A label-smoothing control would land inside seed noise at one
+seed. A full-budget warm-start control is unnecessary because every arm trains from scratch. Feature-level
+distillation arms would confound the interaction term. A matched-compute control is redundant because weight
+ternarization leaves the number of multiply-accumulate operations unchanged, so arm A already serves.</p>
+
+<h3>4.2 Reporting protocol</h3>
+
+<p><b>No checkpoint selection.</b> The best epoch over training is a maximum over many noisy draws, and its
+upward bias grows with a run's variance. Ternary arms are expected to be noisier, so best-epoch reporting
+would inflate exactly the arms whose success is at stake. The primary metric is instead the mean test
+accuracy of the ten checkpoints from epochs 151–160, each evaluated separately; accuracies are averaged,
+never weights. TTQ [4] report a moving average for the same reason without stating a window; ours is
+explicit. For the same reason the submitted checkpoints are the final ones, not a "best" epoch.</p>
+
+<p><b>Validation and test.</b> The 50,000 training images are split 45,000/5,000 with a fixed seed, and the
+split is hashed and checked against a committed constant on every load. Validation is used only for learning
+curves, the settledness check and the teacher smoke test, never for selection or tuning. The test set was
+read exactly once, after every headline run had finished. The teacher trains on the same 45,000 images, so no
+network saw the validation images during training.</p>
+
+<p><b>From scratch, fixed budget.</b> Every arm trains for 160 epochs from random initialisation. Warm-starting
+ternary arms from a trained full-precision model would give them extra epochs the other arms did not receive,
+and invites a specific failure mode: latent weights that never cross their thresholds, so the discrete
+structure freezes at initialisation and only BatchNorm and the scales train. The schedule sits inside the range
+TTQ and Yin et al. use on CIFAR ResNets; we do not attribute it to either, since TTQ's printed milestones
+include epoch 300 alongside a claim of convergence at 160.</p>
+
+<h3>4.3 Pre-committed interpretation rules</h3>
+
+<p>These rules were fixed before any result existed and are implemented in code (<code>scripts/aggregate.py</code>),
+which emits the verdicts reported in section 6. "Spread" means maximum minus minimum across seeds, in
+percentage points; arm B's spread comes from two seeds and is marked wherever it appears.</p>
+<ul>
+<li>The <b>recovery ratio</b> <i>R</i> = (D − C)/(A − C) is <i>undefined</i>, and no recovery language is used,
+if C ≥ A or if |A − C| is smaller than the largest within-arm spread. Without this rule a near-zero
+denominator produces a spectacular ratio from noise.</li>
+<li>The <b>interaction</b> (D − C) − (B − A) is reported as suggestive only if it exceeds twice the largest
+within-arm spread among A, B, C and D, and never as a quantified effect size, because B has two seeds.</li>
+<li>If the teacher's test accuracy is at or below arm A's mean, the teacher offers no capability the student
+lacks, B and D are <b>uninterpretable as distillation</b>, and the interaction is not computed.</li>
+<li>Any difference smaller than the largest relevant within-arm spread is reported as <b>not resolved</b>,
+never as a small effect.</li>
+</ul>
+
+<h2>5. Training pipeline and stability</h2>
+
+<p>The rubric's examples of debugging effort are progressive quantization and learning-rate warmup. We used
+neither, deliberately. A schedule intervention that helps one arm more than another shifts the comparison in a
+direction we cannot bound, and progressive quantization would give ternary arms a partly full-precision
+training phase the other arms lack. We addressed stability through measurement, pre-committed criteria, and a
+verification suite that gates training, described in sections 5.2 to 5.6.</p>
+
+<h3>5.1 The QAT loop and hyperparameters</h3>
+
+<p>Each step runs: ternarize the latent weights, forward, backward through the identity estimator, SGD step on
+the latent weights, clamp to [−1, 1]. Because Δ and α are recomputed inside every forward pass, the ternary
+forward pass is used throughout distillation, including the forward that produces the loss the student learns
+from. Weight decay applies to convolution and classifier weights only; BatchNorm γ and β and all biases are
+excluded, since decaying a BatchNorm scale shrinks a layer's output without regularising what it computes.
+Under a relative threshold, decay shrinks weights and threshold together, so it barely affects ternary
+assignments; we kept the conventional value rather than remove it, and did not tune it per arm.</p>
+
+<table>
+<tr><th>Setting</th><th>Value</th><th>Setting</th><th>Value</th></tr>
+<tr><td>Epochs</td><td>160, identical for every arm</td><td>Batch size</td><td>128</td></tr>
+<tr><td>Optimizer</td><td>SGD, momentum 0.9, not Nesterov</td><td>Weight decay</td><td>1×10<sup>−4</sup>, conv and FC weights only</td></tr>
+<tr><td>Learning rate</td><td>0.1; ×0.1 before epochs 80 and 120</td><td>Gradient clipping</td><td>none</td></tr>
+<tr><td>Precision</td><td>fp32 throughout; no AMP; TF32 disabled</td><td>Latent clamp</td><td>[−1, 1] after each step</td></tr>
+<tr><td>Augmentation</td><td>4-px zero pad, random 32×32 crop, flip p = 0.5</td><td>Normalisation</td><td>CIFAR-10 channel mean and std</td></tr>
+<tr><td>KD (B, D)</td><td>λ = 0.9, <i>T</i> = 4, KL batchmean</td><td>Split seed</td><td>20260828 (45k/5k)</td></tr>
+<tr><td>Determinism</td><td>cuDNN deterministic, benchmark off</td><td>Data loading</td><td>4 workers, seeded generator</td></tr>
+<tr><td>Hardware</td><td>NVIDIA Tesla T4 (Google Colab)</td><td>Framework</td><td>PyTorch 2.11, CUDA 12.8</td></tr>
+</table>
+<p class="tcap"><b>Table 3.</b> Hyperparameters, identical for every arm except the distillation settings, which
+apply only to B and D. No value was selected from data. The learning rate is computed directly from the
+1-indexed epoch: PyTorch's <code>MultiStepLR</code> with these milestones and one step per epoch would drop at
+epochs 81 and 121, an off-by-one a verification check guards against.</p>
+
+<p>Measured cost on a T4 was 43 s per epoch for ternary ResNet-18 (arm C), 67.4 s for ResNet-34 (arm T) and
+66.7 s for ternary ResNet-18 with a teacher forward pass (arm D). <span class="tbd">TBD: arm A's measured
+epoch time from its metrics, giving the overhead of recomputing the quantizer.</span></p>
+
+<h3>5.2 Loss and accuracy curves</h3>
+
+<figure>
+<img src="figures/fig4_learning_curves.png" alt="Learning curves">
+<figcaption><b>Figure 4.</b> Training loss and validation accuracy against epoch for every arm, including the
+teacher. Thick lines are means over seeds; thin lines are individual seeds. Distillation losses include the
+<i>T</i>²-scaled KL term and are plotted separately from cross-entropy losses, since the two are on different
+scales. <span class="tbd">TBD: what to conclude.</span></figcaption>
+</figure>
+
+<p>Per-epoch training accuracy was not part of the pre-registered log, so the curves show training loss and
+validation accuracy. To report the teacher's train/test gap, which the brief asks for, training accuracy was
+computed afterwards from each run's final checkpoint on the 45,000 training images with augmentation off.
+<span class="tbd">TBD: train accuracy, test accuracy and gap for T, A and D, from train_accuracy.py.</span></p>
+
+<p><span class="tbd">TBD after data: confirm no divergence; flatness of validation accuracy over the final third as
+evidence the fixed 160-epoch budget did not undertrain the ternary arms.</span></p>
+
+<p>One data-quality note applies to Figure 4. Run A_2's log lacks records for epochs 123–125, so its curve has a
+three-epoch gap. The run trained through those epochs; only the log lines are missing (amendment A5).</p>
+
+<h3>5.3 Oscillation and the reversal rate</h3>
+
+<p>A latent weight sitting near a threshold can change its ternary assignment on a tiny update, change back on
+the next, and continue doing so while barely moving. The network used for computation then changes from step
+to step even when the latent weights look stable, which adds training noise and leaves BatchNorm's running
+statistics describing an average over several distinct networks.</p>
+
+<p>To measure this we log a <b>reversal rate</b> per layer, every epoch. A weight's state is its assignment in
+{−1, 0, +1} at the end of an epoch. A reversal is a state change whose direction opposes that weight's most
+recent previous change, however many epochs earlier that was. The denominator is every ternary weight in the
+layer, so the rate is comparable across epochs and arms. It is undefined for epochs 1 and 2, when no reversal
+can yet be observed, and is logged as null rather than zero so it cannot be mistaken for a stable epoch.
+A plain flip rate would not serve: it cannot distinguish productive structural search, where weights move
+monotonically to new states, from a small population thrashing at a boundary, and those call for opposite
+responses. Unit tests check the metric against hand-built state sequences, including a weight stable for
+several epochs before reversing.</p>
+
+<figure>
+<img src="figures/fig5_reversal_rate.png" alt="Reversal rate">
+<figcaption><b>Figure 5.</b> Reversal rate against epoch. (a) Over all ternary weights, arms C and D, mean over
+seeds. (b, c) Per layer, colour darkening with depth. Dotted lines mark learning-rate drops.
+<span class="tbd">TBD: what to conclude, once plotted.</span></figcaption>
+</figure>
+
+<p><span class="tbd">TBD after data: whether reversals collapse at each learning-rate drop; whether D is noisier
+than C (if distillation destabilises ternary training, that is a finding in itself); which layers oscillate
+most.</span></p>
+
+<h3>5.4 Sparsity</h3>
+
+<figure>
+<img src="figures/fig6_zero_fraction.png" alt="Zero fraction">
+<figcaption><b>Figure 6.</b> Fraction of each layer's weights quantized to zero, against epoch, for arms C and D,
+colour darkening with depth. The shaded band is the 30–50% sparsity range in which TTQ reports lowest error.
+<span class="tbd">TBD: what to conclude.</span></figcaption>
+</figure>
+
+<p><span class="tbd">TBD after data: overall sparsity against TTQ's 30–50% band; whether the early and late
+layers move in opposite directions as TTQ observed (first ternary layer losing sparsity, last layers gaining
+it).</span></p>
+
+<h3>5.5 Stability criteria and discards</h3>
+
+<p>The teacher had to reach a last-10 mean <b>validation</b> accuracy of 92% before any student trained. This is
+a smoke test for a broken pipeline rather than a quality bar: He et al. report 91.25% for a ResNet-20 with 0.27M
+parameters [1], so a ResNet-34 below 92% would indicate a bug. The teacher reached <b>94.02%</b>. This is
+unrelated to the comparison between the teacher and arm A, which uses test accuracy under the rule in section 4.3.</p>
+
+<p>A run is flagged unsettled if its validation accuracy over epochs 151–160 spans more than 0.5 percentage
+points. The criterion is weak by design: it catches a run whose final-phase variance makes a single number
+unreliable, and nothing subtler. An earlier two-part version, which also compared the final window against the
+window before the last learning-rate drop, was rejected as nearly vacuous, since a run noisy at the end is
+generally noisy earlier. <span class="tbd">TBD: which runs, if any, were flagged.</span></p>
+
+<p>A run could be discarded only for a NaN or infinite training loss, for a mean training loss at epoch 160 above
+that at epoch 1, or for infrastructure failure. No criterion reads accuracy: a run that trains cleanly to a poor
+number is a result. Replacement seeds would have been drawn from a pre-listed sequence. <b>None of the 13 headline
+runs was discarded.</b> <span class="tbd">TBD: sweep runs' discard status.</span></p>
+
+<h3>5.6 Verification suite and the defects it caught</h3>
+
+<p>No run trained until a pre-flight gate passed: unit tests (59 in the final repository, covering the quantizer,
+estimator, KD loss, reversal metric, storage accounting against an independent recomputation, and the
+interpretation rules) and hardware checks for
+determinism, learning-rate boundaries, the ternary layer set, weight-decay grouping, and absence of test-set
+access in the training code. The checks caught four defects, each of which would otherwise have reached the
+results.</p>
+<ol>
+<li><b>The wrong control architecture.</b> Taken literally, the implementation specification gave the 6<i>n</i>+2
+family twice the intended depth. A computed ResNet-20 parameter count of about 0.56M against He et al.'s 0.27M
+exposed it (amendment A2); arm E would otherwise have been a different, larger network.</li>
+<li><b>Aliased tracking state.</b> A saved copy of the reversal-rate buffers shared storage with the live copy, so
+restoring it made the next epoch see no change and report zero reversals. A save-and-restore test caught it.</li>
+<li><b>A resume that crashed.</b> Loading a resume file onto the GPU moved the random-number-generator state
+there too, which PyTorch rejects. It surfaced on the first real resume.</li>
+<li><b>A resume that silently diverged.</b> After the crash was fixed, resumed runs trained without error, but
+the shuffling generator advances one draw per epoch and had not been restored, so a resumed run saw a different
+data order. A check comparing a resumed run against an uninterrupted one found epoch-3 training loss 1.15297
+against 1.15979. After the fix both give 1.1598 with validation accuracy 63.28%, exactly.</li>
+</ol>
+
+<p>The fourth defect is the instructive one. The difference was small and entirely plausible; nothing about the
+run looked wrong. Only a differential check, comparing two paths that must agree, could expose it, and a check
+asserting that a single run looked reasonable would have passed it. One headline run, A_0, had resumed before the
+fix and was retained, with its data order after epoch 40 not matching its seed (amendment A5); the substituted
+order is still random and independent of the arm, so it does not bias the comparison.</p>
+
+<p>Determinism was verified beyond what the pre-registration required. The same seed reproduced identical
+per-epoch loss and validation accuracy (1.9550 and 41.16%, then 1.4218 and 53.16%) in separate sessions on
+different cloud machines, and a different seed diverged (2.0973 and 37.10%). A reloaded teacher checkpoint
+reproduced its logged validation accuracy exactly. After the defects above, checkpoints were written through a
+temporary file and an atomic rename so a killed session cannot leave a truncated file, and every run records
+each GPU model it trained on.</p>
+
+<h2>6. Evaluation and compression</h2>
+
+<h3>6.1 Results</h3>
+
+<table>
+<tr><th>Arm</th><th class="n">Seeds</th><th class="n">Last-10 test mean</th><th class="n">Spread</th><th class="n">Epoch-160 test</th><th class="n">Unsettled</th><th class="n">Discards</th></tr>
+<tr class="key"><td>T teacher, ResNet-34 fp32</td><td class="n">1</td><td class="n"><span class="tbd">TBD</span></td><td class="n">n/a (1 seed)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr class="key"><td>A ResNet-18 fp32, CE</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr><td>B ResNet-18 fp32, KD</td><td class="n">2</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span> (2 seeds)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr><td>C ResNet-18 ternary, CE</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr class="key"><td>D ResNet-18 ternary, KD</td><td class="n">3</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+<tr><td>E ResNet-44 fp32, CE</td><td class="n">1</td><td class="n"><span class="tbd">TBD</span></td><td class="n">n/a (1 seed)</td><td class="n"><span class="tbd">TBD</span></td><td class="n"><span class="tbd">TBD</span></td><td class="n">0</td></tr>
+</table>
+<p class="tcap"><b>Table 4.</b> Test accuracy (%). The primary metric is the mean of ten separately evaluated
+checkpoints from epochs 151–160. Spread is maximum minus minimum across seeds, in percentage points. Arms T and E
+have one seed and support threshold judgements only.</p>
+
+<p><span class="tbd">TBD after Phase 4, reported exactly as scripts/aggregate.py computed them:</span></p>
+<ul>
+<li><b>Teacher comparison.</b> <span class="tbd">TBD: T's test accuracy against arm A's mean, and whether B and D
+are interpretable as distillation.</span></li>
+<li><b>Recovery ratio.</b> <span class="tbd">TBD: the value of R, or that it is undefined and which condition
+triggered that.</span></li>
+<li><b>Interaction.</b> <span class="tbd">TBD: (D − C) − (B − A) with the verdict suggestive, unresolved, or not
+computed.</span></li>
+<li><b>Largest within-arm spread.</b> <span class="tbd">TBD</span>, including arm B, whose spread comes from two
+seeds.</li>
+</ul>
+
+<h3>6.2 Accuracy</h3>
+
+<p><span class="tbd">TBD after Phase 4.</span> If the ternary arms match or exceed full precision, we report that
+directly and explain the mechanism rather than search for a loss. ResNet-18 has 11.2M parameters for 45,000
+training images. TTQ [4] found ternarization improving on full precision for deeper CIFAR ResNets (32, 44 and 56
+layers) while costing accuracy only on the smallest, ResNet-20, and conjectured that ternary weights act as a
+capacity constraint that curbs overfitting; TWN [3] report the ternary gap shrinking as the backbone widens. If
+there is a loss, we report it with the pre-committed ratio and do not round favourably.</p>
+
+<h3>6.3 Compression</h3>
+
+<table>
+<tr><th>Model</th><th class="n">Parameters</th><th class="n">Bits / weight</th><th class="n">Exported storage</th><th class="n">vs fp32 ResNet-18</th><th class="n">MACs</th></tr>
+<tr><td>ResNet-18 fp32 (A, B)</td><td class="n">11,173,962</td><td class="n">32</td><td class="n">42.6619 MB</td><td class="n">1×</td><td class="n"><span class="tbd">TBD</span></td></tr>
+<tr class="key"><td>ResNet-18 ternary (C, D)</td><td class="n">11,173,962</td><td class="n">2.085</td><td class="n">2.7776 MB</td><td class="n">15.36× smaller</td><td class="n"><span class="tbd">TBD</span> (same as fp32)</td></tr>
+<tr><td>ResNet-44 fp32 (E)</td><td class="n">658,586</td><td class="n">32</td><td class="n">2.5244 MB</td><td class="n">16.90× smaller</td><td class="n"><span class="tbd">TBD</span></td></tr>
+<tr><td>ResNet-34 fp32 (T)</td><td class="n">21,282,122</td><td class="n">32</td><td class="n">81.2498 MB</td><td class="n">1.90× larger</td><td class="n"><span class="tbd">TBD</span></td></tr>
+</table>
+<p class="tcap"><b>Table 5.</b> Model size. Exported storage uses a fixed-width convention: 2 bits per ternary
+weight, one fp32 scale per output filter, fp32 stem and classifier, and all four BatchNorm tensors (γ, β, running
+mean, running variance) in fp32, with BatchNorm shipped separately rather than folded into convolutions.</p>
+
+<p>The ternary total decomposes as 2.6602 MB of 2-bit weights, 0.0181 MB of per-filter scales, 0.0262 MB for the
+stem and classifier, and 0.0732 MB of BatchNorm. Against 42.6619 MB for the full-precision network this is a
+<b>15.36× reduction</b>. TWN and TTQ both describe ternary networks as roughly 16× smaller; that figure keeps some
+layers full precision without counting them, and ignores the scales. Counting everything the deployed model needs
+lowers the ratio, and the difference is the accounting rather than a shortfall. The fixed-width convention was
+chosen so storage is a function of architecture alone. Entropy coding or base-3 packing would shrink the ternary
+model further, but would make storage depend on the trained weights and would retroactively have changed arm E's
+selection, which had to be fixed before training; we computed no packed size.</p>
+
+<p>The figure is not only arithmetic. <code>scripts/verify_ternary.py</code> writes the student in deployable form,
+packing ternary weights four to a byte, then reloads that file into an ordinary full-precision ResNet-18 and checks
+it reproduces the ternary network's outputs. <span class="tbd">TBD: the exported file size on disk, from running
+verify_ternary.py on D_0.</span></p>
+
+<p><b>Interpretation.</b> Storage is the claim weight quantization makes, so it leads. The number of
+multiply-accumulate operations is unchanged by weight ternarization, since the same convolutions run over the same
+feature maps; arm A is therefore also the matched-compute comparison. A ternary weight can replace multiplication
+with addition and subtraction, but that saving materialises only with kernels written for it, which we did not
+write, and no latency claim follows. TTQ state forward time under 30% of full precision in the same passage as their
+memory claim, without kernel details; we do not inherit that claim. Checkpoints hold fp32 latent weights and are
+full size; compression describes the exported model only.</p>
+
+<p><span class="tbd">TBD after Phase 4: per-layer sparsity against TTQ's 30–50% band; arm E against arm D. If a
+full-precision network of nearly the same size performs as well as D, that is a substantive negative result about
+the whole pipeline and will be reported as one.</span></p>
+
+<h2>7. Ablation: distillation temperature</h2>
+
+<p><b>Hypothesis.</b> A ternary student has a smaller effective hypothesis space, so matching a high-entropy target
+may add noise on top of an already biased estimator gradient rather than transfer structure. Hinton et al. [2]
+observed an analogue with width on MNIST: with 300 or more units per layer, temperatures above 8 performed
+similarly, but with 30 units per layer temperatures between 2.5 and 4 worked significantly better than higher or
+lower ones. Their explanation is that lower temperatures pay less attention to logits far below average, and they
+conclude that intermediate temperatures work best when the student is too small to capture all of the teacher's
+knowledge.</p>
+
+<p><b>Scope.</b> That result varies width in MNIST multilayer perceptrons. We vary precision in a CIFAR ResNet.
+Whether reduced precision constrains a network the way reduced width does is the assumption under test, not an
+inherited result. Hinton's finding also favours intermediate temperatures rather than low ones, so the prediction is
+a moderate optimum, not a preference for hard targets. And this ablation characterises the ternary student's response
+to temperature only. It is not a test of the capacity-gap hypothesis, which would need arms B and D swept over the
+same grid at two or more seeds each; we did not run that.</p>
+
+<p><b>Design.</b> Arm D at <i>T</i> ∈ {2, 4, 8}, two seeds per point, everything else identical. The <i>T</i> = 4 point
+consists of arm D's seeds 0 and 1 only, not its three-seed mean, so all three points rest on the same number of runs.
+Arm C is the no-teacher reference. Every headline number was recorded before any sweep run began, enforced in code, so
+the sweep could not revise them. A temperature that beats <i>T</i> = 4 is reported as an unexploited finding. The
+pre-committed reporting rule treats a trend as monotone, or a difference as real only if it exceeds the across-seed
+spread; everything else is reported as flat. Two seeds per point can locate a direction, not an optimum.</p>
+
+<p>The KD arms' loss magnitude depends on <i>T</i> through the <i>T</i>² factor, so training losses are not
+comparable across temperatures; the comparison uses test accuracy only.</p>
+
+<figure class="narrow">
+<img src="figures/fig7_temperature_sweep.png" alt="Temperature sweep">
+<figcaption><b>Figure 7.</b> Arm D's last-10 test accuracy against distillation temperature. Dots are individual seeds;
+vertical bars span them. The horizontal line and band show arm C, trained without a teacher.
+<span class="tbd">TBD: what to conclude.</span></figcaption>
+</figure>
+
+<p><span class="tbd">TBD after the sweep: the three means, their spreads, and the verdict aggregate.py returned
+(monotone, exceeding spread, or flat).</span></p>
+
+<h2>8. Discussion and limitations</h2>
+
+<p><b>Real hardware speedup requires specialised kernels.</b> Weight ternarization leaves the multiply-accumulate count
+unchanged. TWN note that the saving is replacing multiplications with additions, which general-purpose GPU convolution
+kernels do not exploit. Our result is therefore a storage result. We make no latency or energy claim, and any such claim
+would need kernels that operate on packed ternary weights.</p>
+
+<p><b>The ternary constraint affects early and late layers differently.</b> We kept the stem and classifier in full
+precision at a cost of 6,858 parameters. <span class="tbd">TBD: whether our per-layer sparsity reproduces TTQ's finding
+that the first quantized layer and the last layers move in opposite directions during training.</span> The classifier
+choice also interacts with distillation. A ternary classifier computes a ±α-weighted sum over 512 features and can express
+only coarse differences between logits, so it cannot represent finely softened targets; the usable temperature and the
+classifier's precision should be chosen together.</p>
+
+<p>The remaining limitations were recorded in the pre-registration before training.</p>
+<ul>
+<li>The 160-epoch budget is compute-bounded. If ternary arms converge more slowly, the bias runs against the ternary result;
+flat final-third validation curves are the evidence offered against undertraining. A doubled-budget control was not run.</li>
+<li><i>T</i> = 4 may not suit a ternary student, which biases against arm D. λ was not varied at all.</li>
+<li>Arm B has two seeds, which limits the interaction term to a directional statement.</li>
+<li>Arm E has one seed and supports a threshold judgement only; it is nearest-storage, 9.1% below the target, not an exact
+match.</li>
+<li>Weight decay was not tuned per arm and may not suit ternary training.</li>
+<li>Holding out 5,000 images costs 10% of the training data relative to published setups, and may not affect all arms
+equally; higher-capacity arms may lose more.</li>
+<li>The degenerate-filter fallback overrides TWN's support selection, though it can fire only on an all-zero filter.</li>
+<li>The settledness (0.5 points) and teacher-gate (92%) thresholds are declared round numbers, not calibrated.</li>
+<li>Three seeds is the minimum that yields a spread; no formal significance test is performed or claimed.</li>
+<li>Runs executed across many cloud sessions. Resume fidelity is verified within one GPU model; one run (A_0) is not
+reproducible bit for bit from its seed, and one (A_2) has a three-epoch logging gap.</li>
+<li>Absolute accuracies are not comparable with published CIFAR-10 figures, which use different architectures (ResNet-18
+here, the 6<i>n</i>+2 family in He et al.), different training data (45,000 against 50,000 images) and different
+reporting. The reference papers were used for direction and mechanism only.</li>
+</ul>
+
+<p>A follow-up would sweep arms B and D over the same temperature grid with more seeds, which is what testing the
+capacity-gap hypothesis requires; vary λ; add feature-level distillation as separate arms; and run a doubled-budget
+control.</p>
+
+<h2>9. Conclusion</h2>
+
+<p>A ResNet-18 with 99.85% of its weights ternary exports at 2.78 MB, 15.36× smaller than its full-precision
+counterpart, with multiply-accumulate count unchanged. <span class="tbd">TBD after Phase 4 and the sweep: the accuracy
+findings, stated no more strongly than the pre-committed rules allow.</span></p>
+
+<h2>References</h2>
+<ol class="refs">
+<li>K. He, X. Zhang, S. Ren, J. Sun. Deep Residual Learning for Image Recognition. <i>CVPR</i>, 2016.</li>
+<li>G. Hinton, O. Vinyals, J. Dean. Distilling the Knowledge in a Neural Network. <i>NeurIPS Deep Learning Workshop</i>, 2015.</li>
+<li>F. Li, B. Liu, X. Wang, B. Zhang, J. Yan. Ternary Weight Networks. arXiv:1605.04711, version 3, 2022 (first version 2016).</li>
+<li>C. Zhu, S. Han, H. Mao, W. J. Dally. Trained Ternary Quantization. <i>ICLR</i>, 2017.</li>
+<li>Y. Bengio, N. Léonard, A. Courville. Estimating or Propagating Gradients Through Stochastic Neurons for Conditional Computation. arXiv:1308.3432, 2013.</li>
+<li>P. Yin, J. Lyu, S. Zhang, S. Osher, Y. Qi, J. Xin. Understanding Straight-Through Estimator in Training Activation Quantized Neural Nets. <i>ICLR</i>, 2019.</li>
+</ol>
+
+<h2>Deliverables and reproduction</h2>
+<table>
+<tr><th>Deliverable</th><th>Where</th></tr>
+<tr><td>Code: data pipeline, teacher training, ternary layer, KD+QAT training, evaluation</td><td>GitHub repository above; mapping in its README</td></tr>
+<tr><td>Hyperparameters, curves, evaluation table, ablation, limitations</td><td>Table 3; Figures 4–7; Tables 4–5; sections 7 and 8</td></tr>
+<tr><td>Checkpoints: teacher and ternary student</td><td>Final (epoch 160) checkpoints of T_0 and D_0; no best-epoch selection (section 4.2)</td></tr>
+<tr><td>Script verifying the ternary constraint on saved weights</td><td><code>scripts/verify_ternary.py</code></td></tr>
+<tr><td>Fixed seeds and environment</td><td>Table 3; <code>requirements.txt</code>; seeds and commit recorded in every run manifest</td></tr>
+<tr><td>Full run data: per-epoch metrics, manifests, test results, logs</td><td><span class="tbd">TBD: Google Drive link</span></td></tr>
+</table>
+
+<h2>Use of AI tools</h2>
+<p>The experimental design was developed in a conversation with Claude (Anthropic), available at
+<a href="https://claude.ai/share/d3c13fb1-72af-4992-a768-a0643204bd58">claude.ai/share/d3c13fb1-72af-4992-a768-a0643204bd58</a>.
+That conversation produced the two design documents in the repository, <code>PREREGISTRATION.md</code> and
+<code>ATDL_ASSIGNMENT1 Handoff.md</code>. All code was then written by Claude Code, using those documents as its
+specification, including the training and evaluation pipeline, the tests and pre-flight checks, the Colab notebook, the
+analysis scripts and the figure script. Claude Code also drafted amendments A1–A5, each reviewed and approved before it
+was recorded. Commits in the repository are made under my account, but the code in them was written by Claude Code.
+<span class="tbd">TBD: link to the Claude Code conversation, and a sentence on how this report was drafted and edited.</span>
+I ran all training and evaluation on Google Colab and made the decisions the process called for, including approving each
+amendment and retaining run A_0 rather than re-running it.</p>
+
+<div class="pagebreak"></div>
+<h2>Appendix A. Pre-registration, verbatim, with amendment log</h2>
+<pre class="appendix"><!--PREREGISTRATION--></pre>
+
+<h2>Appendix B. Per-layer statistics</h2>
+<p><span class="tbd">TBD after Phase 4: for each of the 19 ternary layers, weight count, last-10 mean zero fraction, final
+reversal rate, and degenerate-filter counts, from aggregate.py's per-layer tables.</span></p>
+
+</body>
+</html>
