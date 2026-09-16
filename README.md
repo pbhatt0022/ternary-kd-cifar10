@@ -64,6 +64,15 @@ filter holds only values in {−α, 0, +α}, confirms which layers remain fp32, 
 sparsity. With `--export` it also writes the model in its deployed form, packing ternary weights
 at 2 bits each, then reloads that file and checks it reproduces the ternary weights exactly.
 
+## Run data
+
+All training and evaluation outputs are on Google Drive (view only):
+[`atdl_runs`](https://drive.google.com/drive/folders/1lmWoubSkr0ktE2DyV8at0H1bcoFZnI1r?usp=drive_link).
+Each run folder holds `manifest.json` (seed, commit, GPU, hyperparameters, status),
+`metrics.jsonl` (one record per epoch), `test_results.json`, and the checkpoints from epochs
+151–160. `report/` holds the tables and curve data from `scripts/aggregate.py`, and `logs/` the
+console output of every phase.
+
 ## Checkpoints
 
 The study deliberately performs **no best-checkpoint selection**: choosing the best epoch biases
