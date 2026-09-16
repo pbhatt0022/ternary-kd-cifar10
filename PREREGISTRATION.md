@@ -362,3 +362,16 @@ infrastructure, not a change to the experiment. §10.3 continues to apply to cra
 and corrupted checkpoints, and a preemption that cannot be resumed is still a discard. The
 epoch 151–160 archive checkpoints of §11 are unchanged, and `resume.pt` is not used for
 any reported number.
+
+### 2026-09-15 — A4: which teacher checkpoint feeds arms B and D
+
+§6 specifies one teacher and §11 saves ten of its checkpoints (epochs 151–160), but nothing
+states which of them the distillation arms learn from. Distillation needs a single fixed set
+of weights.
+
+**Resolution:** the epoch-160 checkpoint of `T_0`, recorded as `teacher_run` and
+`teacher_epoch` in every KD manifest. The alternatives are both excluded elsewhere in this
+document: averaging the ten checkpoints' weights is forbidden by §12, and choosing among them
+by validation accuracy would be checkpoint selection, also forbidden by §12. Epoch 160 is the
+only choice that involves no selection. Decided before any KD arm trained; changes no
+reported number relative to the design, only fills a gap in it.
