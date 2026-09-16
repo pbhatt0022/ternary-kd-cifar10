@@ -388,7 +388,7 @@ scales. No run diverged, and validation accuracy is flat from epoch 120 onward i
 <p>Per-epoch training accuracy was not part of the pre-registered log, so the curves show training loss and
 validation accuracy. To report the teacher's train/test gap, which the brief asks for, training accuracy was
 computed afterwards from each run's final checkpoint on the 45,000 training images with augmentation off.
-<span class="tbd">TBD: train accuracy, test accuracy and gap for T, A and D, from train_accuracy.py.</span></p>
+Every run fit its training set almost perfectly: 99.91% for arm E and 99.99% to 100.00% for every other run. At epoch 160 the train/test gap was 6.27 points for the teacher, 5.97 to 6.30 for arm A, 5.79 to 6.28 for arm D, and largest for arm E at 9.82.</p>
 
 <p>Training was stable in every arm. No loss became
 non-finite, every loss fell at each learning-rate drop, and validation accuracy was flat over the last 40 epochs:
@@ -559,7 +559,7 @@ reached 0.0006 by epoch 160, so it had fit the 45,000 training images almost exa
 largest network in the study and did not convert that capacity into test accuracy. The pre-registered teacher rule
 therefore applies, and arms B and D are not interpreted as distillation. Their gains over their no-teacher
 counterparts would be unresolved regardless: 0.34 points for B over A and 0.44 points for D over C, both inside the
-noise. <span class="tbd">TBD: teacher's train accuracy and train/test gap, from train_accuracy.py.</span></p>
+noise. Measured on the training images without augmentation, the teacher's final checkpoint scored 100.00%, against 93.73% on test: a gap of 6.27 points. The assignment asks for a teacher with a small train/test gap, and this teacher does not have one; its gap is no smaller than the students' (5.75 to 7.04 points across the ResNet-18 runs). Every ResNet-18 in the study also reached 99.99% to 100% training accuracy, so all of them fit the 45,000 training images, and the teacher's extra capacity bought nothing on the test set. That is the concrete mechanism behind the teacher rule.</p>
 
 <h3>6.3 Compression</h3>
 
@@ -585,8 +585,7 @@ selection, which had to be fixed before training; we computed no packed size.</p
 
 <p>The figure is not only arithmetic. <code>scripts/verify_ternary.py</code> writes the student in deployable form,
 packing ternary weights four to a byte, then reloads that file into an ordinary full-precision ResNet-18 and checks
-it reproduces the ternary network's outputs. <span class="tbd">TBD: the exported file size on disk, from running
-verify_ternary.py on D_0.</span></p>
+it reproduces the ternary network's outputs. Run on seed 0's final student, every one of the 19 layers passed: each output filter held only {−α, 0, +α}, 48.25% of the 11,157,504 ternary weights were zero, and no filter was degenerate. The exported file is <b>2.8209 MB on disk</b>, against 2.7776 MB by the accounting convention; the 0.043 MB difference is serialisation overhead. Reloaded into an ordinary full-precision ResNet-18 with no quantizer anywhere, it reproduced the ternary network's outputs.</p>
 
 <p><b>Interpretation.</b> Storage is the claim weight quantization makes, so it leads. The number of
 multiply-accumulate operations is unchanged by weight ternarization, since the same convolutions run over the same
@@ -676,6 +675,7 @@ classifier's precision should be chosen together.</p>
 <ul>
 <li>The 160-epoch budget is compute-bounded. If ternary arms converge more slowly, the bias runs against the ternary result;
 flat final-third validation curves are the evidence offered against undertraining. A doubled-budget control was not run.</li>
+<li>The teacher fit its training set completely, with a 6.27-point train/test gap. It trained under the same fixed recipe as every arm; the pre-registration deliberately allowed no per-arm tuning, including added regularisation for the teacher, so a stronger teacher was not an option within this design.</li>
 <li><i>T</i> = 4 may not suit a ternary student, which biases against arm D. λ was not varied at all.</li>
 <li>Arm B has two seeds, which limits the interaction term to a directional statement.</li>
 <li>Arm E has one seed and supports a threshold judgement only; it is nearest-storage, 9.1% below the target, not an exact
