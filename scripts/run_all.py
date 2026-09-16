@@ -270,8 +270,18 @@ def phase5(args):
                 print(f"HALT: {results} missing. Phase 4 must complete before the sweep.")
                 return 1
 
+    # --sweep-temperature lets two GPU notebooks split the sweep, one temperature each, so
+    # they write to disjoint run directories and never contend for the same run.
+    temperatures = SWEEP_TEMPERATURES
+    if args.sweep_temperature is not None:
+        if args.sweep_temperature not in SWEEP_TEMPERATURES:
+            print(f"HALT: T={args.sweep_temperature:g} is not a pre-registered sweep point "
+                  f"{tuple(f'{t:g}' for t in SWEEP_TEMPERATURES)}.")
+            return 1
+        temperatures = (args.sweep_temperature,)
+
     summary = {}
-    for temperature in SWEEP_TEMPERATURES:
+    for temperature in temperatures:
         prefix = f"D_T{int(temperature)}"
         result = run_arm("D", len(SWEEP_SEEDS), args,
                          temperature=temperature, label_prefix=prefix)
@@ -279,7 +289,11 @@ def phase5(args):
             return 1
         summary[prefix] = result
         print(f"{prefix}: {len(result['completed'])} completed")
-    _write_discards(args.runs_dir, summary, name="discards_sweep.json")
+
+    # One discards file per process, so two notebooks never write the same Drive file.
+    name = ("discards_sweep.json" if args.sweep_temperature is None
+            else f"discards_sweep_T{int(args.sweep_temperature)}.json")
+    _write_discards(args.runs_dir, summary, name=name)
     return 0
 
 
@@ -303,6 +317,9 @@ def main():
                         help="skip Phase 0 (only for a resumed session that already passed)")
     parser.add_argument("--skip-gate", action="store_true",
                         help="proceed past a failed teacher gate, after investigating it")
+    parser.add_argument("--sweep-temperature", type=float, default=None,
+                        help="Phase 5 only: run just this pre-registered temperature, so two "
+                             "GPU notebooks can split the sweep")
     args = parser.parse_args()
 
     pathlib.Path(args.runs_dir).mkdir(parents=True, exist_ok=True)
